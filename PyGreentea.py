@@ -31,7 +31,6 @@ colorsr = np.random.rand(5000)
 colorsg = np.random.rand(5000)
 colorsb = np.random.rand(5000)
 
-# dims = len(config.output_dims)
 
 def normalize(dataset, newmin=-1, newmax=1):
     maxval = dataset
@@ -202,6 +201,7 @@ def process(net, data_arrays, output_folder, input_padding, output_dims):
                 
         
 def train(solver, data_arrays, label_arrays, affinity_arrays, mode, input_padding, output_dims):
+    dims = len(output_dims)
     losses = []
     
     net = solver.net

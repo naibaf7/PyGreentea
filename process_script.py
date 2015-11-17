@@ -14,7 +14,10 @@ solver_proto = "net/solver.prototxt"
 
 # Specify values for testing
 test_net = "net/anisonet_test.prototxt"
-trained_model = "anisonet1e5_iter_9150.caffemodel"
+# trained_model = "anisonet1e5_iter_9150.caffemodel"
+# trained_model = "anisonet1e5malis_iter_1000.caffemodel"
+trained_model = "anisonet1e5malis1e5_iter_23000.caffemodel"
+
 
 output_folder = "processed"
 
@@ -35,9 +38,10 @@ input_padding = [28, 88, 88]
 border_reflect = False
 
 # Select "train" or "process"
-# mode = "train"
 mode = "process"
-# loss = "malis_aniso"
+# mode = "train"
+
+loss = "malis_aniso"
 
 
 
@@ -67,7 +71,7 @@ caffe.set_device(device_id)
 
 if(mode == "train"):
     solver = caffe.get_solver(solver_proto)
-    # solver.restore("anisonet1e5_iter_8650.solverstate")
+    solver.restore("anisonet1e5_iter_9000.solverstate")
     net = solver.net
     print "Done"
     pygt.train(solver, [hdf5_raw_ds], [hdf5_gt_ds], [hdf5_aff_ds], loss, input_padding, output_dims)
