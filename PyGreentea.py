@@ -22,9 +22,29 @@ from numpy import float32, int32, uint8
 
 # Load the configuration file
 import config
-# Import pycaffe
-import caffe
 
+# Load the setup module
+import setup
+
+# Direct call to PyGreentea, set up everything
+if __name__ == "__main__":
+    if config.install_packages:
+        setup.install_dependencies()
+    
+    setup.clone_caffe(config.caffe_path, config.clone_caffe, config.compile_caffe)
+    setup.clone_malis(config.malis_path, config.clone_malis, config.compile_malis)
+    
+    if config.compile_caffe:
+        setup.compile_caffe(config.caffe_path)
+    
+    if config.compile_malis:
+        setup.compile_malis(config.malis_path)
+
+
+# Import Caffe twice (train and test)
+import caffe as caf_train
+del sys.modules['caffe']
+import caffe as caf_test
 
 # General preparations
 colorsr = np.random.rand(5000)

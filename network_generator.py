@@ -9,32 +9,6 @@ import multiprocessing
 from PIL import Image
 from Crypto.Random.random import randint
 
-# Load the configuration file
-import config
-
-cmd_folder = os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0]))
-if cmd_folder not in sys.path:
-    sys.path.append(cmd_folder)
-    
-cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],config.caffe_path+"/python")))
-if cmd_subfolder not in sys.path:
-    sys.path.append(cmd_subfolder)
-
-sys.path.append(config.caffe_path+"/python")
-
-# Ensure correct compilation of Caffe and Pycaffe
-if config.library_compile:
-    cpus = multiprocessing.cpu_count()
-    cwd = os.getcwd()
-    os.chdir(config.caffe_path)
-    result = os.system("make all -j %s" % cpus)
-    if result != 0:
-        sys.exit(result)
-    result = os.system("make pycaffe -j %s" % cpus)
-    if result != 0:
-        sys.exit(result)
-    os.chdir(cwd)
-
 # Import pycaffe
 import caffe
 from caffe import layers as L, params as P, to_proto
