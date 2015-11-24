@@ -5,7 +5,6 @@ import random
 import math
 import multiprocessing
 from Crypto.Random.random import randint
-import malis as malis
 import gc
 import resource
 
@@ -41,10 +40,15 @@ if __name__ == "__main__":
         setup.compile_malis(config.malis_path)
 
 
+setup.setup_paths(config.caffe_path, config.malis_path)
+
 # Import Caffe twice (train and test)
 import caffe as caf_train
 del sys.modules['caffe']
 import caffe as caf_test
+
+# Import Malis
+import malis as malis
 
 # General preparations
 colorsr = np.random.rand(5000)

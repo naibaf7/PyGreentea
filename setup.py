@@ -2,7 +2,7 @@ import os, sys, inspect
 import multiprocessing
 import platform
 
-def setup_paths(caffe_path):
+def setup_paths(caffe_path, malis_path):
     cmd_folder = os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0]))
     if cmd_folder not in sys.path:
         sys.path.append(cmd_folder)
@@ -10,8 +10,13 @@ def setup_paths(caffe_path):
     cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile(inspect.currentframe()))[0], caffe_path + "/python")))
     if cmd_subfolder not in sys.path:
         sys.path.append(cmd_subfolder)
+        
+    cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile(inspect.currentframe()))[0], malis_path)))
+    if cmd_subfolder not in sys.path:
+        sys.path.append(cmd_subfolder)
     
     sys.path.append(caffe_path + "/python")
+    sys.path.append(malis_path + "/python")
 
 
 def linux_distribution():
@@ -81,20 +86,20 @@ def compile_caffe(path):
     
 def clone_malis(path, clone, update):
     if clone:
-        os.system('git clone https://github.com/srinituraga/malis %s' % path)
+        os.system('git clone https://github.com/srinituraga/malis.git %s' % path)
     if update:
         cwd = os.getcwd()
         os.chdir(path)
-        os.system('git update')
+        os.system('git pull')
         os.chdir(cwd)
 
 def clone_caffe(path, clone, update):
     if clone:
-        os.system('git clone https://github.com/naibaf7/caffe %s' % path)
+        os.system('git clone https://github.com/naibaf7/caffe.git %s' % path)
     if update:
         cwd = os.getcwd()
         os.chdir(path)
-        os.system('git update')
+        os.system('git pull')
         os.chdir(cwd)
         
 
