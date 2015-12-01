@@ -1,4 +1,4 @@
-import os
+import os, sys, inspect
 import h5py
 import numpy as np
 import random
@@ -7,6 +7,15 @@ import multiprocessing
 from Crypto.Random.random import randint
 import gc
 import resource
+
+# Determine where PyGreentea is
+pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
+
+# Determine where PyGreentea gets called from
+cmdpath = os.getcwd()
+
+sys.path.append(pygtpath)
+sys.path.append(cmdpath)
 
 # Visualization
 import matplotlib
@@ -18,26 +27,46 @@ from PIL import Image
 
 from numpy import float32, int32, uint8
 
-
 # Load the configuration file
 import config
 
 # Load the setup module
 import setup
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
 # Direct call to PyGreentea, set up everything
 if __name__ == "__main__":
+    if (pygtpath != cmdpath):
+        os.chdir(pygtpath)
+    
+    if (os.geteuid() != 0):
+        print(bcolors.WARNING + "PyGreentea setup should probably be executed with root privileges!" + bcolors.ENDC)
+    
     if config.install_packages:
         setup.install_dependencies()
     
-    setup.clone_caffe(config.caffe_path, config.clone_caffe, config.compile_caffe)
-    setup.clone_malis(config.malis_path, config.clone_malis, config.compile_malis)
+    setup.clone_caffe(config.caffe_path, config.clone_caffe, config.update_caffe)
+    setup.clone_malis(config.malis_path, config.clone_malis, config.update_malis)
     
     if config.compile_caffe:
         setup.compile_caffe(config.caffe_path)
     
     if config.compile_malis:
         setup.compile_malis(config.malis_path)
+        
+    if (pygtpath != cmdpath):
+        os.chdir(cmdpath)
+        
+    sys.exit(0)
 
 
 setup.setup_paths(config.caffe_path, config.malis_path)
@@ -46,6 +75,9 @@ setup.setup_paths(config.caffe_path, config.malis_path)
 import caffe as caf_train
 del sys.modules['caffe']
 import caffe as caf_test
+
+# Import the network generator
+# import network_generator as netgen
 
 # Import Malis
 import malis as malis
@@ -294,12 +326,12 @@ def train(solver, data_arrays, label_arrays, affinity_arrays, mode, input_paddin
         print "done"
 
         # Memory clean up and report
-        print("Memory usage (before GC): %d MiB" % ((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / (1024)))
+        # print("Memory usage (before GC): %d MiB" % ((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / (1024)))
         
         while gc.collect():
             pass
 
-        print("Memory usage (after GC): %d MiB" % ((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / (1024)))
+        # print("Memory usage (after GC): %d MiB" % ((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / (1024)))
 
 
         # m = volume_slicer.VolumeSlicer(data=np.squeeze((net.blobs['Convolution18'].data[0])[0,:,:]))
