@@ -7,6 +7,7 @@ import multiprocessing
 from Crypto.Random.random import randint
 import gc
 import resource
+from mayavi.tools.data_wizards import data_source_wizard
 
 # Determine where PyGreentea is
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
@@ -17,13 +18,6 @@ cmdpath = os.getcwd()
 sys.path.append(pygtpath)
 sys.path.append(cmdpath)
 
-# Visualization
-import matplotlib
-import matplotlib.pyplot as plt
-from PIL import Image
-# from mayavi import mlab
-# from mayavi.core.ui.mayavi_scene import MayaviScene
-# import volume_slicer
 
 from numpy import float32, int32, uint8
 
@@ -87,6 +81,21 @@ colorsr = np.random.rand(5000)
 colorsg = np.random.rand(5000)
 colorsb = np.random.rand(5000)
 
+class NetInputWrapper:
+    
+    def __init__(self, net, shapes):
+        self.net = net
+        self.shapes = shapes
+        self.dummy_slice = np.ascontiguousarray([0]).astype(float32);
+        self.inputs = []
+        for i in range(0,len(shapes)):
+            # Pre-allocate arrays that will persist with the network
+            self.inputs += [np.zeros(tuple(self.shapes[i]), dtype=float32)];
+                
+    def setInputs(self, inputs):
+        for i in range(0,len(self.shapes)):
+            np.copyto(self.inputs[i], np.ascontiguousarray(inputs[i]).astype(float32))
+            self.net.set_input_arrays(i, self.inputs[i], self.dummy_slice)
 
 def normalize(dataset, newmin=-1, newmax=1):
     maxval = dataset
@@ -108,56 +117,6 @@ def count_affinity(dataset):
 
 def border_reflect(dataset, border):
     return np.pad(dataset,((border, border)),'reflect')
-
-def inspect_2D_hdf5(hdf5_file):
-    print 'HDF5 keys: %s' % hdf5_file.keys()
-    dset = hdf5_file[hdf5_file.keys()[0]]
-    print 'HDF5 shape: X: %s Y: %s' % dset.shape
-    print 'HDF5 data type: %s' % dset.dtype
-    print 'Max/Min: %s' % [np.asarray(dset).max(0).max(0), np.asarray(dset).min(0).min(0)]
-
-def inspect_3D_hdf5(hdf5_file):
-    print 'HDF5 keys: %s' % hdf5_file.keys()
-    dset = hdf5_file[hdf5_file.keys()[0]]
-    print 'HDF5 shape: X: %s Y: %s Z: %s' % dset.shape
-    print 'HDF5 data type: %s' % dset.dtype
-    print 'Max/Min: %s' % [np.asarray(dset).max(0).max(0).max(0), np.asarray(dset).min(0).min(0).min(0)]
-    
-def inspect_4D_hdf5(hdf5_file):
-    print 'HDF5 keys: %s' % hdf5_file.keys()
-    dset = hdf5_file[hdf5_file.keys()[0]]
-    print 'HDF5 shape: T: %s X: %s Y: %s Z: %s' % dset.shape
-    print 'HDF5 data type: %s' % dset.dtype
-    print 'Max/Min: %s' % [np.asarray(dset).max(0).max(0).max(0).max(0), np.asarray(dset).min(0).min(0).min(0).min(0)]
-    
-def display_raw(raw_ds, index):
-    slice = raw_ds[0:raw_ds.shape[0], 0:raw_ds.shape[1], index]
-    minval = np.min(np.min(slice, axis=1), axis=0)
-    maxval = np.max(np.max(slice, axis=1), axis=0)   
-    img = Image.fromarray((slice - minval) / (maxval - minval) * 255)
-    img.show()
-    
-def display_con(con_ds, index):
-    slice = con_ds[0:con_ds.shape[0], 0:con_ds.shape[1], index]
-    rgbArray = np.zeros((con_ds.shape[0], con_ds.shape[1], 3), 'uint8')
-    rgbArray[..., 0] = colorsr[slice] * 256
-    rgbArray[..., 1] = colorsg[slice] * 256
-    rgbArray[..., 2] = colorsb[slice] * 256
-    img = Image.fromarray(rgbArray, 'RGB')
-    img.show()
-    
-def display_aff(aff_ds, index):
-    sliceX = aff_ds[0, 0:520, 0:520, index]
-    sliceY = aff_ds[1, 0:520, 0:520, index]
-    sliceZ = aff_ds[2, 0:520, 0:520, index]
-    img = Image.fromarray((sliceX & sliceY & sliceZ) * 255)
-    img.show()
-    
-def display_binary(bin_ds, index):
-    slice = bin_ds[0:bin_ds.shape[0], 0:bin_ds.shape[1], index]
-    img = Image.fromarray(np.uint8(slice * 255))
-    img.show()
-    
     
 def slice_data(data, offsets, sizes):
     if (len(offsets) == 1):
@@ -194,12 +153,14 @@ def sanity_check_net_blobs(net):
                 print 'Failure, location %d; objective %d' % (i, data[i])
         print 'Failure: %s, first at %d' % (failure,first)
         if failure:
-             break;
+            break;
 
 
 def process(net, data_arrays, output_folder, input_padding, output_dims):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
+    
+    net_io = NetInputWrapper(net, [[1,1] + output_dims]);
     
     dst = net.blobs['prob']
     dummy_slice = [0]
@@ -220,9 +181,10 @@ def process(net, data_arrays, output_folder, input_padding, output_dims):
                 
         while(True):
             data_slice = slice_data(data_array, offsets, [output_dims[di] + input_padding[di] for di in range(0, dims)])
-            net.set_input_arrays(0, np.ascontiguousarray(data_slice[None, None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
+            net_io.setInputs([data_slice])
             net.forward()
             output = dst.data[0].copy()
+            
             print offsets
             print output.mean()
             
@@ -261,6 +223,19 @@ def train(solver, data_arrays, label_arrays, affinity_arrays, mode, input_paddin
     losses = []
     
     net = solver.net
+    
+    shapes = []
+    # Raw data slice input         (n = 1, f = 1, spatial dims)
+    shapes += [[1,1] + [output_dims[di] + input_padding[di] for di in range(0, dims)]]
+    # Affinity data slice input    (n = 1, f = #edges, spatial dims)
+    shapes += [[1,11]  + output_dims[di]]
+    # Connected components input   (n = 1, f = 1, spatial dims)
+    shapes += [[1,1]  + output_dims[di]]
+    # Nhood specifications         (n = #edges, f = 3)
+    shapes += [[11,3]]
+
+    net_io = NetInputWrapper(net, shapes);
+    
     if mode == 'malis' or mode == 'euclid':
         nhood = malis.mknhood3d()
     if mode == 'malis_aniso' or mode == 'euclid_aniso':
@@ -278,64 +253,37 @@ def train(solver, data_arrays, label_arrays, affinity_arrays, mode, input_paddin
         offsets = []
         for j in range(0, dims):
             offsets.append(randint(0, data_array.shape[j] - (output_dims[j] + input_padding[j])))
-        
-        dummy_slice = [0]
-        
+                
         # These are the raw data elements
         data_slice = slice_data(data_array, offsets, [output_dims[di] + input_padding[di] for di in range(0, dims)])
 
         # These are the affinity edge values
         aff_slice = slice_data(affinity_array, [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [11] + output_dims)
         
-        # These are the labels (connected components)
-        label_slice = slice_data(label_array, [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
-        # Also recomputing the corresponding labels (connected components)
-        aff_slice_tmp = malis.seg_to_affgraph(label_slice,nhood)
-        label_slice,ccSizes = malis.connected_components_affgraph(aff_slice_tmp,nhood)
-        
-
-        print (data_slice[None, None, :]).shape
-        print (label_slice[None, None, :]).shape
-        print (aff_slice[None, :]).shape
-        print (nhood[None, None, :]).shape
-        
         if mode == 'malis' or mode == 'malis_aniso':
-            net.set_input_arrays(0, np.ascontiguousarray(data_slice[None, None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
-            net.set_input_arrays(1, np.ascontiguousarray(label_slice[None, None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
-            net.set_input_arrays(2, np.ascontiguousarray(aff_slice[None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
-            net.set_input_arrays(3, np.ascontiguousarray(nhood[None, None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
+            # These are the labels (connected components)
+            label_slice = slice_data(label_array, [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
+            # Also recomputing the corresponding labels (connected components)
+            aff_slice_tmp = malis.seg_to_affgraph(label_slice,nhood)
+            label_slice,ccSizes = malis.connected_components_affgraph(aff_slice_tmp,nhood)
+            net_io.setInputs([data_slice, label_slice, aff_slice, nhood])
             
         # We pass the raw and affinity array only
         if mode == 'euclid' or mode == 'euclid_aniso':
             frac_pos = np.clip(aff_slice.mean(),0.05,0.95)
             w_pos = np.sqrt(1.0/(2.0*frac_pos))
-            w_neg = np.sqrt(1.0/(2.0*(1.0-frac_pos)))
-
-            net.set_input_arrays(0, np.ascontiguousarray(data_slice[None, None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
-            net.set_input_arrays(1, np.ascontiguousarray(aff_slice[None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
-            net.set_input_arrays(2, np.ascontiguousarray(error_scale(aff_slice[None, :],w_neg,w_pos)).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
-            # net.set_input_arrays(2, np.ascontiguousarray(error_scale(aff_slice[None, :],1.0,0.045)).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
+            w_neg = np.sqrt(1.0/(2.0*(1.0-frac_pos)))            
+            net_io.setInputs([data_slice, aff_slice, error_scale(aff_slice,w_neg,w_pos)])
 
         if mode == 'softmax':
-            net.set_input_arrays(0, np.ascontiguousarray(data_slice[None, None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
-            net.set_input_arrays(1, np.ascontiguousarray(label_slice[None, None, :]).astype(float32), np.ascontiguousarray(dummy_slice).astype(float32))
+            net_io.setInputs([data_slice, aff_slice])
         
         # Single step
-        print "Stepping..."
         loss = solver.step(1)
-        print "done"
-
-        # Memory clean up and report
-        # print("Memory usage (before GC): %d MiB" % ((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / (1024)))
         
         while gc.collect():
             pass
 
-        # print("Memory usage (after GC): %d MiB" % ((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / (1024)))
-
-
-        # m = volume_slicer.VolumeSlicer(data=np.squeeze((net.blobs['Convolution18'].data[0])[0,:,:]))
-        # m.configure_traits()
 
         if mode == 'euclid' or mode == 'euclid_aniso':
             print("[Iter %i] Loss: %s, frac_pos=%f, w_pos=%f" % (i,loss,frac_pos,w_pos))
