@@ -45,24 +45,32 @@ if __name__ == "__main__":
         print(bcolors.WARNING + "PyGreentea setup should probably be executed with root privileges!" + bcolors.ENDC)
     
     if config.install_packages:
+        print(bcolors.HEADER + ("==== PYGT: Installing OS packages ====").ljust(80,"=") + bcolors.ENDC)
         setup.install_dependencies()
     
+    print(bcolors.HEADER + ("==== PYGT: Updating Caffe/Greentea repository ====").ljust(80,"=") + bcolors.ENDC)
     setup.clone_caffe(config.caffe_path, config.clone_caffe, config.update_caffe)
+    
+    print(bcolors.HEADER + ("==== PYGT: Updating Malis repository ====").ljust(80,"=") + bcolors.ENDC)
     setup.clone_malis(config.malis_path, config.clone_malis, config.update_malis)
     
     if config.compile_caffe:
+        print(bcolors.HEADER + ("==== PYGT: Compiling Caffe/Greentea ====").ljust(80,"=") + bcolors.ENDC)
         setup.compile_caffe(config.caffe_path)
     
     if config.compile_malis:
+        print(bcolors.HEADER + ("==== PYGT: Compiling Malis ====").ljust(80,"=") + bcolors.ENDC)
         setup.compile_malis(config.malis_path)
         
     if (pygtpath != cmdpath):
         os.chdir(cmdpath)
-        
+    
+    print(bcolors.OKGREEN + ("==== PYGT: Setup finished ====").ljust(80,"=") + bcolors.ENDC)
     sys.exit(0)
 
 
 setup.setup_paths(config.caffe_path, config.malis_path)
+setup.set_environment_vars()
 
 # Import Caffe twice (train and test)
 import caffe as caf_train
@@ -254,7 +262,7 @@ class TestNetEvaluator:
         # Weight transfer
         net_weight_transfer(self.test_net, self.train_net)
         # Run test
-        self.thread = threading.Thread(target=self.run_test, (iteration))
+        self.thread = threading.Thread(target=self.run_test, args=(iteration))
         self.thread.start()
                 
         
