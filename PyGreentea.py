@@ -1,13 +1,12 @@
-import os, sys, inspect
+import os, sys, inspect, resource, gc
 import h5py
 import numpy as np
 import random
 import math
 import multiprocessing
+import threading
 from Crypto.Random.random import randint
-import gc
-import resource
-from mayavi.tools.data_wizards import data_source_wizard
+
 
 # Determine where PyGreentea is
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
@@ -76,11 +75,8 @@ import caffe as caf_test
 # Import Malis
 import malis as malis
 
-# General preparations
-colorsr = np.random.rand(5000)
-colorsg = np.random.rand(5000)
-colorsb = np.random.rand(5000)
 
+# Wrapper around a networks set_input_arrays to prevent memory leaks of locked up arrays
 class NetInputWrapper:
     
     def __init__(self, net, shapes):
@@ -96,6 +92,18 @@ class NetInputWrapper:
         for i in range(0,len(self.shapes)):
             np.copyto(self.inputs[i], np.ascontiguousarray(inputs[i]).astype(float32))
             self.net.set_input_arrays(i, self.inputs[i], self.dummy_slice)
+                  
+
+# Transfer network weights from one network to another
+def net_weight_transfer(dst_net, src_net):
+    # Go through all source layers/weights
+    for layer_key in src_net.params:
+        # Test existence of the weights in destination network
+        if (layer_key in dst_net.params):
+            # Copy weights + bias
+            for i in range(0, min(len(dst_net.params[layer_key]), len(src_net.params[layer_key]))):
+                np.copyto(dst_net.params[layer_key][i], src_net.params[layer_key][i])
+        
 
 def normalize(dataset, newmin=-1, newmax=1):
     maxval = dataset
@@ -106,17 +114,21 @@ def normalize(dataset, newmin=-1, newmax=1):
         minval = minval.min(0)
     return ((dataset - minval) / (maxval - minval)) * (newmax - newmin) + newmin
 
+
 def error_scale(data, factor_low, factor_high):
     scale = np.add((data >= 0.5) * factor_high, (data < 0.5) * factor_low)
     return scale
+
 
 def count_affinity(dataset):
     aff_high = np.sum(dataset >= 0.5)
     aff_low = np.sum(dataset < 0.5)
     return aff_high, aff_low
 
+
 def border_reflect(dataset, border):
     return np.pad(dataset,((border, border)),'reflect')
+    
     
 def slice_data(data, offsets, sizes):
     if (len(offsets) == 1):
@@ -128,6 +140,7 @@ def slice_data(data, offsets, sizes):
     if (len(offsets) == 4):
         return data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1], offsets[2]:offsets[2] + sizes[2], offsets[3]:offsets[3] + sizes[3]]
 
+
 def set_slice_data(data, insert_data, offsets, sizes):
     if (len(offsets) == 1):
         data[offsets[0]:offsets[0] + sizes[0]] = insert_data
@@ -137,6 +150,7 @@ def set_slice_data(data, insert_data, offsets, sizes):
         data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1], offsets[2]:offsets[2] + sizes[2]] = insert_data
     if (len(offsets) == 4):
         data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1], offsets[2]:offsets[2] + sizes[2], offsets[3]:offsets[3] + sizes[3]] = insert_data
+
 
 def sanity_check_net_blobs(net):
     for key in net.blobs.keys():
@@ -216,21 +230,49 @@ def process(net, data_arrays, output_folder, input_padding, output_dims):
         outdset = outhdf5.create_dataset('main', tuple([fmaps_out]+out_dims), np.float32, data=pred_array)
         # outdset.attrs['edges'] = np.string_('-1,0,0;0,-1,0;0,0,-1')
         outhdf5.close()
+      
+        
+    # Wrapper around a networks 
+class TestNetEvaluator:
+    
+    def __init__(self, test_net, train_net):
+        self.test_net = test_net
+        self.train_net = train_net
+        
+    def run_test(self, iteration):
+        return False
+        # TODO: Implement evaluation methods
+        # TODO: Store result
+
+    def evaluate(self, iteration):
+        # Test/wait if last test is done
+        if not(self.thread is None):
+            try:
+                self.thread.join()
+            except:
+                self.thread = None
+        # Weight transfer
+        net_weight_transfer(self.test_net, self.train_net)
+        # Run test
+        self.thread = threading.Thread(target=self.run_test, (iteration))
+        self.thread.start()
                 
         
-def train(solver, data_arrays, label_arrays, affinity_arrays, mode, input_padding, output_dims):
+def train(solver, test_net, data_arrays, label_arrays, affinity_arrays, mode, input_padding, output_dims):
     dims = len(output_dims)
     losses = []
     
     net = solver.net
     
+    test_eval = TestNetEvaluator(test_net, net)
+    
     shapes = []
     # Raw data slice input         (n = 1, f = 1, spatial dims)
     shapes += [[1,1] + [output_dims[di] + input_padding[di] for di in range(0, dims)]]
     # Affinity data slice input    (n = 1, f = #edges, spatial dims)
-    shapes += [[1,11]  + output_dims[di]]
+    shapes += [[1,11] + output_dims[di]]
     # Connected components input   (n = 1, f = 1, spatial dims)
-    shapes += [[1,1]  + output_dims[di]]
+    shapes += [[1,1] + output_dims[di]]
     # Nhood specifications         (n = #edges, f = 3)
     shapes += [[11,3]]
 
@@ -243,6 +285,10 @@ def train(solver, data_arrays, label_arrays, affinity_arrays, mode, input_paddin
     
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
+        
+        # TODO: Make this a parameter
+        if (i % 20 == 0):
+            test_eval.evaluate(i)
         
         # First pick the dataset to train with
         dataset = randint(0, len(data_arrays) - 1)
@@ -289,6 +335,7 @@ def train(solver, data_arrays, label_arrays, affinity_arrays, mode, input_paddin
             print("[Iter %i] Loss: %s, frac_pos=%f, w_pos=%f" % (i,loss,frac_pos,w_pos))
         else:
             print("[Iter %i] Loss: %s" % (i,loss))
+        # TODO: Store losses to file
         losses += [loss]
         
 

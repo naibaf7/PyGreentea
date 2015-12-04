@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from PIL import Image
+# from mayavi.tools.data_wizards import data_source_wizard
 # from mayavi import mlab
 # from mayavi.core.ui.mayavi_scene import MayaviScene
 # import volume_slicer

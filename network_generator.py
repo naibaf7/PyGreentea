@@ -23,18 +23,6 @@ if cmd_subfolder not in sys.path:
 
 sys.path.append(config.caffe_path+"/python")
 
-# Ensure correct compilation of Caffe and Pycaffe
-if config.library_compile:
-    cpus = multiprocessing.cpu_count()
-    cwd = os.getcwd()
-    os.chdir(config.caffe_path)
-    result = os.system("make all -j %s" % cpus)
-    if result != 0:
-        sys.exit(result)
-    result = os.system("make pycaffe -j %s" % cpus)
-    if result != 0:
-        sys.exit(result)
-    os.chdir(cwd)
 
 # Import pycaffe
 import caffe
