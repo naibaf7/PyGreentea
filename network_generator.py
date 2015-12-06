@@ -6,23 +6,8 @@ import matplotlib
 import random
 import math
 import multiprocessing
-from PIL import Image
 from Crypto.Random.random import randint
 from functools import partial
-
-# Load the configuration file
-import config
-
-cmd_folder = os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0]))
-if cmd_folder not in sys.path:
-    sys.path.append(cmd_folder)
-    
-cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],config.caffe_path+"/python")))
-if cmd_subfolder not in sys.path:
-    sys.path.append(cmd_subfolder)
-
-sys.path.append(config.caffe_path+"/python")
-
 
 # Import pycaffe
 import caffe
@@ -166,7 +151,7 @@ def mergecrop(run_shape, bottom_a, bottom_b):
 
     return L.MergeCrop(bottom_a, bottom_b, forward=[1,1], backward=[1,1])
 
-def implement_usknet(net, run_shape, fmaps_start, fmaps_end):
+def implement_usknet(netconf, net, run_shape, fmaps_start, fmaps_end):
     # Chained blob list to construct the network (forward direction)
     blobs = []
 
@@ -219,7 +204,8 @@ def implement_usknet(net, run_shape, fmaps_start, fmaps_end):
     # Return the last blob of the network (goes to error objective)
     return blobs[-1]
 
-def caffenet(netmode):
+
+def caffenet(netconf, netmode):
     # Start Caffe proto net
     net = caffe.NetSpec()
     # Specify input data structures
@@ -246,7 +232,7 @@ def caffenet(netmode):
         run_shape_in = [[0,0,1,[1,1,1],[44,132,132]]]
         run_shape_out = run_shape_in
         
-        last_blob = implement_usknet(net, run_shape_out, 64, fmaps_end)
+        last_blob = implement_usknet(netconf, net, run_shape_out, 64, fmaps_end)
 
         # Implement the prediction layer
         if netconf.loss_function == 'malis':
@@ -292,7 +278,7 @@ def caffenet(netmode):
         run_shape_out = run_shape_in
     
         # Start the actual network
-        last_blob = implement_usknet(net, run_shape_out, 64, fmaps_end)
+        last_blob = implement_usknet(netconf, net, run_shape_out, 64, fmaps_end)
         
         for i in range(0,len(run_shape_out)):
             print(run_shape_out[i])
@@ -316,12 +302,19 @@ def caffenet(netmode):
     # Return the protocol buffer of the generated network
     return net.to_proto()
 
+
+def create_nets(netconf):
+    return (caffenet(netconf, caffe_pb2.TRAIN), caffenet(netconf, caffe_pb2.TEST))
+
+# DEPRECATED; Use the create_nets function directly.
 def make_net():
     with open('net/net_train.prototxt', 'w') as f:
         print(caffenet(caffe_pb2.TRAIN), file=f)
     with open('net/net_test.prototxt', 'w') as f:
         print(caffenet(caffe_pb2.TEST), file=f)
 
+
+# DEPRECATED; Use the SolverParam interface to Python
 def make_solver():
     with open('net/solver.prototxt', 'w') as f:
         print('train_net: \"net/net_train.prototxt\"', file=f)
@@ -335,8 +328,5 @@ def make_solver():
         print('snapshot: 2000', file=f)
         print('snapshot_prefix: \"net_\"', file=f)
         print('display: 50', file=f)
-
-make_net()
-make_solver()
 
 

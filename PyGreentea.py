@@ -72,13 +72,11 @@ if __name__ == "__main__":
 setup.setup_paths(config.caffe_path, config.malis_path)
 setup.set_environment_vars()
 
-# Import Caffe twice (train and test)
-import caffe as caf_train
-del sys.modules['caffe']
-import caffe as caf_test
+# Import Caffe
+import caffe
 
 # Import the network generator
-# import network_generator as netgen
+import network_generator as netgen
 
 # Import Malis
 import malis as malis
@@ -265,7 +263,27 @@ class TestNetEvaluator:
         self.thread = threading.Thread(target=self.run_test, args=(iteration))
         self.thread.start()
                 
-        
+
+def init_solver(self, solver_config, test_net=None, train_device=0, test_device=0):
+    caffe.set_mode_gpu()
+    caffe.set_device(train_device)
+   
+    solver_inst = caffe.get_solver(solver_config)
+    
+    if (test_net == None):
+        return (solver_inst, None)
+    else:
+        return (solver_inst, init_testnet(test_net, test_device=test_device))
+    
+def init_testnet(self, test_net, trained_model=None, test_device=0):
+    caffe.set_mode_gpu()
+    caffe.set_device(test_device)
+    if(trained_model == None):
+        return caffe.Net_Init(test_net, caffe.TEST)
+    else:
+        return caffe.Net_Init_Load(test_net, trained_model, caffe.TEST)
+
+    
 def train(solver, test_net, data_arrays, label_arrays, affinity_arrays, mode, input_padding, output_dims):
     dims = len(output_dims)
     losses = []

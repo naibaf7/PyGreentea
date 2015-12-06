@@ -38,8 +38,6 @@ loss = "euclid_aniso"
 
 
 
-
-
 hdf5_raw = h5py.File(hdf5_raw_file, 'r')
 hdf5_gt = h5py.File(hdf5_gt_file, 'r')
 hdf5_aff = h5py.File(hdf5_aff_file, 'r')
