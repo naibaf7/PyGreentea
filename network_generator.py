@@ -14,8 +14,6 @@ import caffe
 from caffe import layers as L, params as P, to_proto
 from caffe.proto import caffe_pb2
 
-import netconf
-
 # General variables
 # Size of a float variable
 fsize = 4
@@ -211,16 +209,7 @@ def caffenet(netconf, netmode):
     # Specify input data structures
     
     if netmode == caffe_pb2.TEST:
-        if netconf.loss_function == 'malis':
-            fmaps_end = 11
-            
-        if netconf.loss_function == 'euclid':
-            fmaps_end = 11
-
-        if netconf.loss_function == 'softmax':
-            fmaps_end = 2
-
-        net.data, net.datai = data_layer([1,1,44,132,132])
+        net.data, net.datai = data_layer([1,1] + netconf.input_shape)
         net.silence = L.Silence(net.datai, ntop=0)
         
         # Shape specs:
@@ -229,10 +218,10 @@ def caffenet(netconf, netmode):
         # 03.    Num. channels
         # 04.    [d] parameter running value
         # 05.    [w] parameter running value
-        run_shape_in = [[0,0,1,[1,1,1],[44,132,132]]]
+        run_shape_in = [[0,0,1,[1,1,1],netconf.input_shape]]
         run_shape_out = run_shape_in
         
-        last_blob = implement_usknet(netconf, net, run_shape_out, 64, fmaps_end)
+        last_blob = implement_usknet(netconf, net, run_shape_out, netconf.fmap_start, netconf.fmap_output)
 
         # Implement the prediction layer
         if netconf.loss_function == 'malis':
@@ -253,32 +242,29 @@ def caffenet(netconf, netmode):
         
     else:
         if netconf.loss_function == 'malis':
-            net.data, net.datai = data_layer([1,1,44,132,132])
-            net.label, net.labeli = data_layer([1,1,16,44,44])
-            net.label_affinity, net.label_affinityi = data_layer([1,11,16,44,44])
-            net.affinity_edges, net.affinity_edgesi = data_layer([1,1,11,3])
+            net.data, net.datai = data_layer([1,1]+netconf.input_shape)
+            net.label, net.labeli = data_layer([1,1]+netconf.output_shape)
+            net.label_affinity, net.label_affinityi = data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
+            net.affinity_edges, net.affinity_edgesi = data_layer([1,1]+netconf.fmap_output+[3])
             net.silence = L.Silence(net.datai, net.labeli, net.label_affinityi, net.affinity_edgesi, ntop=0)
-            fmaps_end = 11
             
         if netconf.loss_function == 'euclid':
-            net.data, net.datai = data_layer([1,1,44,132,132])
-            net.label, net.labeli = data_layer([1,11,16,44,44])
-            net.scale, net.scalei = data_layer([1,11,16,44,44])
+            net.data, net.datai = data_layer([1,1]+netconf.input_shape)
+            net.label, net.labeli = data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
+            net.scale, net.scalei = data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
             net.silence = L.Silence(net.datai, net.labeli, net.scalei, ntop=0)
-            fmaps_end = 11
 
         if netconf.loss_function == 'softmax':
-            net.data, net.datai = data_layer([1,1,44,132,132])
+            net.data, net.datai = data_layer([1,1]+netconf.input_shape)
             # Currently only supports binary classification
-            net.label, net.labeli = data_layer([1,1,16,44,44])
+            net.label, net.labeli = data_layer([1,1]+netconf.output_shape)
             net.silence = L.Silence(net.datai, net.labeli, ntop=0)
-            fmaps_end = 2
     
-        run_shape_in = [[0,1,1,[1,1,1],[44,132,132]]]
+        run_shape_in = [[0,1,1,[1,1,1],netconf.input_shape]]
         run_shape_out = run_shape_in
     
         # Start the actual network
-        last_blob = implement_usknet(netconf, net, run_shape_out, 64, fmaps_end)
+        last_blob = implement_usknet(netconf, net, run_shape_out, netconf.fmap_start, netconf.fmap_output)
         
         for i in range(0,len(run_shape_out)):
             print(run_shape_out[i])

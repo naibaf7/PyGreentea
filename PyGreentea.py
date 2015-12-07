@@ -73,7 +73,7 @@ setup.setup_paths(config.caffe_path, config.malis_path)
 setup.set_environment_vars()
 
 # Import Caffe
-import caffe
+import caffe as caffe
 
 # Import the network generator
 import network_generator as netgen
