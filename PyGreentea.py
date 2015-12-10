@@ -6,6 +6,7 @@ import math
 import multiprocessing
 import threading
 from Crypto.Random.random import randint
+from gtk import input_add
 
 
 # Determine where PyGreentea is
@@ -174,9 +175,41 @@ def sanity_check_net_blobs(net):
         print 'Failure: %s, first at %d' % (failure,first)
         if failure:
             break;
+        
+def get_net_input_specs(net, test_blobs = ['data', 'label', 'scale', 'label_affinity', 'affinty_edges']):
+    
+    shapes = []
+    
+    # The order of the inputs is strict in our network types
+    for blob in test_blobs:
+        if (blob in net.blobs):
+            shapes += [[blob, np.shape(net.blobs[blob].data[0])]]
+        
+    return shapes
+
+def get_spatial_io_dims(net):
+    
+    out_primary = 'label'
+    
+    if ('prob' in net.blobs):
+        out_primary = 'prob'
+    
+    shapes = get_net_input_specs(net, test_blobs=['data', out_primary])
+        
+    dims = len(shapes[0][1]) - 2
+    
+    input_dims = list(shapes[0][1])[2:2+dims]
+    output_dims = list(shapes[1][1])[2:2+dims]
+    padding = [input_dims[i]-output_dims[i] for i in range(0,dims)]
+    
+    return input_dims, output_dims, padding
+    
+    
+def get_net_output_specs(net):
+    return np.shape(net.blobs['prob'].data[0])
 
 
-def process(net, data_arrays, output_folder, input_padding, output_dims):
+def process(net, data_arrays, output_folder):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     
@@ -264,7 +297,7 @@ class TestNetEvaluator:
         self.thread.start()
                 
 
-def init_solver(self, solver_config, test_net=None, train_device=0, test_device=0):
+def init_solver(solver_config, test_net=None, train_device=0, test_device=0):
     caffe.set_mode_gpu()
     caffe.set_device(train_device)
    
@@ -275,22 +308,25 @@ def init_solver(self, solver_config, test_net=None, train_device=0, test_device=
     else:
         return (solver_inst, init_testnet(test_net, test_device=test_device))
     
-def init_testnet(self, test_net, trained_model=None, test_device=0):
+def init_testnet(test_net, trained_model=None, test_device=0):
     caffe.set_mode_gpu()
     caffe.set_device(test_device)
     if(trained_model == None):
-        return caffe.Net_Init(test_net, caffe.TEST)
+        return caffe.Net(test_net, caffe.TEST)
     else:
-        return caffe.Net_Init_Load(test_net, trained_model, caffe.TEST)
+        return caffe.Net(test_net, trained_model, caffe.TEST)
 
     
-def train(solver, test_net, data_arrays, label_arrays, affinity_arrays, mode, input_padding, output_dims):
-    dims = len(output_dims)
-    losses = []
+def train(solver, test_net, data_arrays, options):
     
     net = solver.net
     
     test_eval = TestNetEvaluator(test_net, net)
+    
+    input_dims, output_dims, input_padding = get_spatial_io_dims(net)
+
+    dims = len(output_dims[0])
+    losses = []
     
     shapes = []
     # Raw data slice input         (n = 1, f = 1, spatial dims)
@@ -304,16 +340,17 @@ def train(solver, test_net, data_arrays, label_arrays, affinity_arrays, mode, in
 
     net_io = NetInputWrapper(net, shapes);
     
-    if mode == 'malis' or mode == 'euclid':
+    if options.loss_function == 'malis' or options.loss_function == 'euclid':
         nhood = malis.mknhood3d()
-    if mode == 'malis_aniso' or mode == 'euclid_aniso':
+        
+    if options.loss_function == 'malis_aniso' or options.loss_function == 'euclid_aniso':
         nhood = malis.mknhood3d_aniso()
     
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
         
         # TODO: Make this a parameter
-        if (i % 20 == 0):
+        if (i % options.test_interval == 0):
             test_eval.evaluate(i)
         
         # First pick the dataset to train with
@@ -332,7 +369,7 @@ def train(solver, test_net, data_arrays, label_arrays, affinity_arrays, mode, in
         # These are the affinity edge values
         aff_slice = slice_data(affinity_array, [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [11] + output_dims)
         
-        if mode == 'malis' or mode == 'malis_aniso':
+        if options.loss_function == 'malis' or options.loss_function == 'malis_aniso':
             # These are the labels (connected components)
             label_slice = slice_data(label_array, [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
             # Also recomputing the corresponding labels (connected components)
@@ -341,13 +378,13 @@ def train(solver, test_net, data_arrays, label_arrays, affinity_arrays, mode, in
             net_io.setInputs([data_slice, label_slice, aff_slice, nhood])
             
         # We pass the raw and affinity array only
-        if mode == 'euclid' or mode == 'euclid_aniso':
+        if options.loss_function == 'euclid' or options.loss_function == 'euclid_aniso':
             frac_pos = np.clip(aff_slice.mean(),0.05,0.95)
             w_pos = np.sqrt(1.0/(2.0*frac_pos))
             w_neg = np.sqrt(1.0/(2.0*(1.0-frac_pos)))            
             net_io.setInputs([data_slice, aff_slice, error_scale(aff_slice,w_neg,w_pos)])
 
-        if mode == 'softmax':
+        if options.loss_function == 'softmax':
             net_io.setInputs([data_slice, aff_slice])
         
         # Single step
@@ -357,7 +394,7 @@ def train(solver, test_net, data_arrays, label_arrays, affinity_arrays, mode, in
             pass
 
 
-        if mode == 'euclid' or mode == 'euclid_aniso':
+        if options.loss_function == 'euclid' or options.loss_function == 'euclid_aniso':
             print("[Iter %i] Loss: %s, frac_pos=%f, w_pos=%f" % (i,loss,frac_pos,w_pos))
         else:
             print("[Iter %i] Loss: %s" % (i,loss))
