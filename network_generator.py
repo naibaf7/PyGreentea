@@ -245,8 +245,8 @@ def caffenet(netconf, netmode):
             net.data, net.datai = data_layer([1,1]+netconf.input_shape)
             net.label, net.labeli = data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
             net.components, net.componentsi = data_layer([1,1]+netconf.output_shape)
-            net.affinity_edges, net.affinity_edgesi = data_layer([1,1]+netconf.fmap_output+[3])
-            net.silence = L.Silence(net.datai, net.labeli, net.componenti, net.affinity_edgesi, ntop=0)
+            net.nhood, net.nhoodi = data_layer([1,1]+netconf.fmap_output+[3])
+            net.silence = L.Silence(net.datai, net.labeli, net.componenti, net.nhoodi, ntop=0)
             
         if netconf.loss_function == 'euclid':
             net.data, net.datai = data_layer([1,1]+netconf.input_shape)
@@ -276,7 +276,7 @@ def caffenet(netconf, netmode):
         # Implement the loss
         if netconf.loss_function == 'malis':       
             last_blob = L.Sigmoid(last_blob, in_place=True)
-            net.loss = L.MalisLoss(last_blob, net.label, net.components, net.affinity_edges, ntop=0)
+            net.loss = L.MalisLoss(last_blob, net.label, net.components, net.nhood, ntop=0)
         
         if netconf.loss_function == 'euclid':
             last_blob = L.Sigmoid(last_blob, in_place=True)

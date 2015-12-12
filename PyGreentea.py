@@ -183,12 +183,11 @@ def get_net_input_specs(net, test_blobs = ['data', 'label', 'scale', 'label_affi
     # The order of the inputs is strict in our network types
     for blob in test_blobs:
         if (blob in net.blobs):
-            shapes += [[blob, np.shape(net.blobs[blob].data[0])]]
+            shapes += [[blob, np.shape(net.blobs[blob].data)]]
         
     return shapes
 
 def get_spatial_io_dims(net):
-    
     out_primary = 'label'
     
     if ('prob' in net.blobs):
@@ -203,10 +202,23 @@ def get_spatial_io_dims(net):
     padding = [input_dims[i]-output_dims[i] for i in range(0,dims)]
     
     return input_dims, output_dims, padding
+
+def get_fmap_io_dims(net):
+    out_primary = 'label'
+    
+    if ('prob' in net.blobs):
+        out_primary = 'prob'
+    
+    shapes = get_net_input_specs(net, test_blobs=['data', out_primary])
+    
+    input_fmaps = list(shapes[0][1])[1]
+    output_fmaps = list(shapes[1][1])[1]
+    
+    return input_fmaps, output_fmaps
     
     
 def get_net_output_specs(net):
-    return np.shape(net.blobs['prob'].data[0])
+    return np.shape(net.blobs['prob'].data)
 
 
 def process(net, data_arrays, output_folder):
@@ -317,75 +329,93 @@ def init_testnet(test_net, trained_model=None, test_device=0):
         return caffe.Net(test_net, trained_model, caffe.TEST)
 
     
-def train(solver, test_net, data_arrays, options):
+def train(solver, test_net, data_arrays, train_data_arrays, options):
     
     net = solver.net
     
     test_eval = TestNetEvaluator(test_net, net)
     
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
+    fmaps_in, fmaps_out = get_fmap_io_dims(net);
 
-    dims = len(output_dims[0])
+    dims = len(output_dims)
     losses = []
     
     shapes = []
     # Raw data slice input         (n = 1, f = 1, spatial dims)
-    shapes += [[1,1] + [output_dims[di] + input_padding[di] for di in range(0, dims)]]
-    # Affinity data slice input    (n = 1, f = #edges, spatial dims)
-    shapes += [[1,11] + output_dims[di]]
-    # Connected components input   (n = 1, f = 1, spatial dims)
-    shapes += [[1,1] + output_dims[di]]
+    shapes += [[1,fmaps_in] + input_dims]
+    # Label data slice input    (n = 1, f = #edges, spatial dims)
+    shapes += [[1,fmaps_out] + output_dims]
+    
+    if (options.loss_function == 'malis'):
+        # Connected components input   (n = 1, f = 1, spatial dims)
+        shapes += [[1,1] + output_dims]
+    if (options.loss_function == 'euclid'):
+        # Error scale input   (n = 1, f = #edges, spatial dims)
+        shapes += [[1,fmaps_out] + output_dims]
     # Nhood specifications         (n = #edges, f = 3)
-    shapes += [[11,3]]
+    if (('nhood' in data_arrays[0]) and (options.loss_function == 'malis')):
+        shapes += [list(np.shape(data_arrays[0]))]
 
     net_io = NetInputWrapper(net, shapes);
-    
-    if options.loss_function == 'malis' or options.loss_function == 'euclid':
-        nhood = malis.mknhood3d()
-        
-    if options.loss_function == 'malis_aniso' or options.loss_function == 'euclid_aniso':
-        nhood = malis.mknhood3d_aniso()
     
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
         
-        # TODO: Make this a parameter
-        if (i % options.test_interval == 0):
-            test_eval.evaluate(i)
+        #if (i % options.test_interval == 0):
+            #test_eval.evaluate(i)
         
         # First pick the dataset to train with
         dataset = randint(0, len(data_arrays) - 1)
-        data_array = data_arrays[dataset]
-        label_array = label_arrays[dataset]
-        affinity_array = affinity_arrays[dataset]
 
         offsets = []
         for j in range(0, dims):
-            offsets.append(randint(0, data_array.shape[j] - (output_dims[j] + input_padding[j])))
+            offsets.append(randint(0, data_arrays[dataset]['data'].shape[1+j] - (output_dims[j] + input_padding[j])))
                 
         # These are the raw data elements
-        data_slice = slice_data(data_array, offsets, [output_dims[di] + input_padding[di] for di in range(0, dims)])
+        data_slice = slice_data(data_arrays[dataset]['data'], [0]+offsets, [fmaps_in]+[output_dims[di] + input_padding[di] for di in range(0, dims)])
 
-        # These are the affinity edge values
-        aff_slice = slice_data(affinity_array, [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [11] + output_dims)
-        
-        if options.loss_function == 'malis' or options.loss_function == 'malis_aniso':
-            # These are the labels (connected components)
-            label_slice = slice_data(label_array, [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
-            # Also recomputing the corresponding labels (connected components)
-            aff_slice_tmp = malis.seg_to_affgraph(label_slice,nhood)
-            label_slice,ccSizes = malis.connected_components_affgraph(aff_slice_tmp,nhood)
-            net_io.setInputs([data_slice, label_slice, aff_slice, nhood])
+        label_slice = None
+        components_slice = None
+
+        if (options.training_method == 'affinity'):
+            if ('label' in data_arrays[dataset]):
+                label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
+                
+            if ('components' in data_arrays[dataset]):
+                # These are the labels (connected components)
+                components_slice = slice_data(data_arrays[dataset]['components'][0,:], [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
+                label_slice = malis.seg_to_affgraph(components_slice, data_arrays[0]['nhood'])
+                components_slice = components_slice[None,:]
             
-        # We pass the raw and affinity array only
-        if options.loss_function == 'euclid' or options.loss_function == 'euclid_aniso':
-            frac_pos = np.clip(aff_slice.mean(),0.05,0.95)
-            w_pos = np.sqrt(1.0/(2.0*frac_pos))
-            w_neg = np.sqrt(1.0/(2.0*(1.0-frac_pos)))            
-            net_io.setInputs([data_slice, aff_slice, error_scale(aff_slice,w_neg,w_pos)])
+            print(data_slice.shape)
+            print(label_slice.shape)
+            print(components_slice.shape)
+            
+            components_slice,ccSizes = malis.connected_components_affgraph(label_slice, data_arrays[0]['nhood'])
+
+        else:
+            label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
+
+
+        if options.loss_function == 'malis':
+            # Also recomputing the corresponding labels (connected components)
+            net_io.setInputs([data_slice, label_slice, components_slice, data_arrays[0]['nhood']])
+            
+        if options.loss_function == 'euclid':
+            if(options.scale_error == True):
+                frac_pos = np.clip(label_slice.mean(),0.05,0.95)
+                w_pos = np.sqrt(1.0/(2.0*frac_pos))
+                w_neg = np.sqrt(1.0/(2.0*(1.0-frac_pos)))
+            else:
+                w_pos = 1
+                w_neg = 1
+                      
+            net_io.setInputs([data_slice, label_slice, error_scale(label_slice,w_neg,w_pos)])
 
         if options.loss_function == 'softmax':
-            net_io.setInputs([data_slice, aff_slice])
+            # These are the affinity edge values
+            net_io.setInputs([data_slice, label_slice])
         
         # Single step
         loss = solver.step(1)
