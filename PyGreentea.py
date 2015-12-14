@@ -89,15 +89,15 @@ class NetInputWrapper:
     def __init__(self, net, shapes):
         self.net = net
         self.shapes = shapes
-        self.dummy_slice = np.ascontiguousarray([0]).astype(float32);
+        self.dummy_slice = np.ascontiguousarray([0]).astype(float32)
         self.inputs = []
         for i in range(0,len(shapes)):
             # Pre-allocate arrays that will persist with the network
-            self.inputs += [np.zeros(tuple(self.shapes[i]), dtype=float32)];
+            self.inputs += [np.zeros(tuple(self.shapes[i]), dtype=float32)]
                 
-    def setInputs(self, inputs):
+    def setInputs(self, data):      
         for i in range(0,len(self.shapes)):
-            np.copyto(self.inputs[i], np.ascontiguousarray(inputs[i]).astype(float32))
+            np.copyto(self.inputs[i], np.ascontiguousarray(data[i]).astype(float32))
             self.net.set_input_arrays(i, self.inputs[i], self.dummy_slice)
                   
 
@@ -109,7 +109,7 @@ def net_weight_transfer(dst_net, src_net):
         if (layer_key in dst_net.params):
             # Copy weights + bias
             for i in range(0, min(len(dst_net.params[layer_key]), len(src_net.params[layer_key]))):
-                np.copyto(dst_net.params[layer_key][i], src_net.params[layer_key][i])
+                np.copyto(dst_net.params[layer_key][i].data, src_net.params[layer_key][i].data)
         
 
 def normalize(dataset, newmin=-1, newmax=1):
@@ -174,7 +174,7 @@ def sanity_check_net_blobs(net):
                 print 'Failure, location %d; objective %d' % (i, data[i])
         print 'Failure: %s, first at %d' % (failure,first)
         if failure:
-            break;
+            break
         
 def get_net_input_specs(net, test_blobs = ['data', 'label', 'scale', 'label_affinity', 'affinty_edges']):
     
@@ -221,22 +221,32 @@ def get_net_output_specs(net):
     return np.shape(net.blobs['prob'].data)
 
 
-def process(net, data_arrays, output_folder):
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+def process(net, data_arrays, shapes=None, net_io=None):    
+    input_dims, output_dims, input_padding = get_spatial_io_dims(net)
+    fmaps_in, fmaps_out = get_fmap_io_dims(net)
+
+    dims = len(output_dims)
     
-    net_io = NetInputWrapper(net, [[1,1] + output_dims]);
-    
+    if (shapes == None):
+        shapes = []
+        # Raw data slice input         (n = 1, f = 1, spatial dims)
+        shapes += [[1,fmaps_in] + input_dims]
+        
+    if (net_io == None):
+        net_io = NetInputWrapper(net, shapes)
+            
     dst = net.blobs['prob']
     dummy_slice = [0]
+    
+    pred_arrays = []
+    
     for i in range(0, len(data_arrays)):
-        data_array = data_arrays[i]
+        data_array = data_arrays[i]['data']
         dims = len(data_array.shape)
         
         offsets = []        
         in_dims = []
         out_dims = []
-        fmaps_out = 11
         for d in range(0, dims):
             offsets += [0]
             in_dims += [data_array.shape[d]]
@@ -252,12 +262,6 @@ def process(net, data_arrays, output_folder):
             
             print offsets
             print output.mean()
-            
-            # while(True):
-            #    blob = raw_input('Blob:')
-            #    fmap = int(raw_input('Enter the feature map:'))
-            #    m = volume_slicer.VolumeSlicer(data=np.squeeze(net.blobs[blob].data[0])[fmap,:,:])
-            #    m.configure_traits()
             
             set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
             
@@ -275,25 +279,32 @@ def process(net, data_arrays, output_folder):
             # Processed the whole input block
             if not incremented:
                 break
-
-        # Safe the output
-        outhdf5 = h5py.File(output_folder+'/'+str(i)+'.h5', 'w')
-        outdset = outhdf5.create_dataset('main', tuple([fmaps_out]+out_dims), np.float32, data=pred_array)
-        # outdset.attrs['edges'] = np.string_('-1,0,0;0,-1,0;0,0,-1')
-        outhdf5.close()
+            
+        pred_arrays += [pred_array]
+            
+    return pred_arrays
       
         
     # Wrapper around a networks 
 class TestNetEvaluator:
     
-    def __init__(self, test_net, train_net):
+    def __init__(self, test_net, train_net, data_arrays, options):
+        self.options = options
         self.test_net = test_net
         self.train_net = train_net
+        self.data_arrays = data_arrays
+        self.thread = None
         
+        input_dims, output_dims, input_padding = get_spatial_io_dims(self.test_net)
+        fmaps_in, fmaps_out = get_fmap_io_dims(self.test_net)       
+        self.shapes = []
+        self.shapes += [[1,fmaps_in] + input_dims]
+        self.net_io = NetInputWrapper(self.test_net, self.shapes)
+            
     def run_test(self, iteration):
-        return False
-        # TODO: Implement evaluation methods
-        # TODO: Store result
+        caffe.select_device(self.options.test_device, False)
+        pred_arrays = process(self.test_net, self.data_arrays, shapes=self.shapes, net_io=self.net_io)
+        
 
     def evaluate(self, iteration):
         # Test/wait if last test is done
@@ -305,24 +316,24 @@ class TestNetEvaluator:
         # Weight transfer
         net_weight_transfer(self.test_net, self.train_net)
         # Run test
-        self.thread = threading.Thread(target=self.run_test, args=(iteration))
+        self.thread = threading.Thread(target=self.run_test, args=[iteration])
         self.thread.start()
                 
 
-def init_solver(solver_config, test_net=None, train_device=0, test_device=0):
+def init_solver(solver_config, options):
     caffe.set_mode_gpu()
-    caffe.set_device(train_device)
+    caffe.select_device(options.train_device, False)
    
     solver_inst = caffe.get_solver(solver_config)
     
-    if (test_net == None):
+    if (options.test_net == None):
         return (solver_inst, None)
     else:
-        return (solver_inst, init_testnet(test_net, test_device=test_device))
+        return (solver_inst, init_testnet(options.test_net, test_device=options.test_device))
     
 def init_testnet(test_net, trained_model=None, test_device=0):
     caffe.set_mode_gpu()
-    caffe.set_device(test_device)
+    caffe.select_device(test_device, False)
     if(trained_model == None):
         return caffe.Net(test_net, caffe.TEST)
     else:
@@ -330,13 +341,14 @@ def init_testnet(test_net, trained_model=None, test_device=0):
 
     
 def train(solver, test_net, data_arrays, train_data_arrays, options):
+    caffe.select_device(options.train_device, False)
     
     net = solver.net
     
-    test_eval = TestNetEvaluator(test_net, net)
+    test_eval = TestNetEvaluator(test_net, net, train_data_arrays, options)
     
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
-    fmaps_in, fmaps_out = get_fmap_io_dims(net);
+    fmaps_in, fmaps_out = get_fmap_io_dims(net)
 
     dims = len(output_dims)
     losses = []
@@ -357,13 +369,13 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     if (('nhood' in data_arrays[0]) and (options.loss_function == 'malis')):
         shapes += [list(np.shape(data_arrays[0]))]
 
-    net_io = NetInputWrapper(net, shapes);
+    net_io = NetInputWrapper(net, shapes)
     
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
         
-        #if (i % options.test_interval == 0):
-            #test_eval.evaluate(i)
+        if (i % options.test_interval == 0):
+            test_eval.evaluate(i)
         
         # First pick the dataset to train with
         dataset = randint(0, len(data_arrays) - 1)
@@ -387,10 +399,6 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 components_slice = slice_data(data_arrays[dataset]['components'][0,:], [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
                 label_slice = malis.seg_to_affgraph(components_slice, data_arrays[0]['nhood'])
                 components_slice = components_slice[None,:]
-            
-            print(data_slice.shape)
-            print(label_slice.shape)
-            print(components_slice.shape)
             
             components_slice,ccSizes = malis.connected_components_affgraph(label_slice, data_arrays[0]['nhood'])
 
