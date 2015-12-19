@@ -208,8 +208,10 @@ def caffenet(netconf, netmode):
     net = caffe.NetSpec()
     # Specify input data structures
     
+    dims = len(netconf.input_shape)
+    
     if netmode == caffe_pb2.TEST:
-        net.data, net.datai = data_layer([1,1] + netconf.input_shape)
+        net.data, net.datai = data_layer([1]+[netconf.fmap_input]+netconf.input_shape)
         net.silence = L.Silence(net.datai, ntop=0)
         
         # Shape specs:
@@ -218,7 +220,7 @@ def caffenet(netconf, netmode):
         # 03.    Num. channels
         # 04.    [d] parameter running value
         # 05.    [w] parameter running value
-        run_shape_in = [[0,0,1,[1,1,1],netconf.input_shape]]
+        run_shape_in = [[0,0,1,[1 for i in range(0,dims)],netconf.input_shape]]
         run_shape_out = run_shape_in
         
         last_blob = implement_usknet(netconf, net, run_shape_out, netconf.fmap_start, netconf.fmap_output)
@@ -241,26 +243,25 @@ def caffenet(netconf, netmode):
         print("Max. conv buffer: %s B" % compute_memory_buffers(run_shape_out))
         
     else:
+        net.data, net.datai = data_layer([1]+[netconf.fmap_input]+netconf.input_shape)
+
         if netconf.loss_function == 'malis':
-            net.data, net.datai = data_layer([1,1]+netconf.input_shape)
             net.label, net.labeli = data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
             net.components, net.componentsi = data_layer([1,1]+netconf.output_shape)
-            net.nhood, net.nhoodi = data_layer([1,1]+netconf.fmap_output+[3])
-            net.silence = L.Silence(net.datai, net.labeli, net.componenti, net.nhoodi, ntop=0)
+            net.nhood, net.nhoodi = data_layer([1,1]+[netconf.fmap_output]+[3])
+            net.silence = L.Silence(net.datai, net.labeli, net.componentsi, net.nhoodi, ntop=0)
             
         if netconf.loss_function == 'euclid':
-            net.data, net.datai = data_layer([1,1]+netconf.input_shape)
             net.label, net.labeli = data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
             net.scale, net.scalei = data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
             net.silence = L.Silence(net.datai, net.labeli, net.scalei, ntop=0)
 
         if netconf.loss_function == 'softmax':
-            net.data, net.datai = data_layer([1,1]+netconf.input_shape)
             # Currently only supports binary classification
-            net.label, net.labeli = data_layer([1,1]+netconf.output_shape)
+            net.label, net.labeli = data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
             net.silence = L.Silence(net.datai, net.labeli, ntop=0)
     
-        run_shape_in = [[0,1,1,[1,1,1],netconf.input_shape]]
+        run_shape_in = [[0,1,1,[1 for i in range(0,dims)],netconf.input_shape]]
         run_shape_out = run_shape_in
     
         # Start the actual network

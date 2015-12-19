@@ -122,6 +122,25 @@ def normalize(dataset, newmin=-1, newmax=1):
     return ((dataset - minval) / (maxval - minval)) * (newmax - newmin) + newmin
 
 
+def getSolverStates(prefix):
+    files = [f for f in os.listdir('.') if os.path.isfile(f)]
+    print files
+    solverstates = []
+    for file in files:
+        if(prefix+'_iter_' in file and '.solverstate' in file):
+            solverstates += [(int(file[len(prefix+'_iter_'):-len('.solverstate')]),file)]
+    return sorted(solverstates)
+            
+def getCaffeModels(prefix):
+    files = [f for f in os.listdir('.') if os.path.isfile(f)]
+    print files
+    caffemodels = []
+    for file in files:
+        if(prefix+'_iter_' in file and '.caffemodel' in file):
+            caffemodels += [(int(file[len(prefix+'_iter_'):-len('.caffemodel')]),file)]
+    return sorted(caffemodels)
+            
+
 def error_scale(data, factor_low, factor_high):
     scale = np.add((data >= 0.5) * factor_high, (data < 0.5) * factor_low)
     return scale
@@ -345,7 +364,9 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     
     net = solver.net
     
-    test_eval = TestNetEvaluator(test_net, net, train_data_arrays, options)
+    test_eval = None
+    if (options.test_net != None):
+        test_eval = TestNetEvaluator(test_net, net, train_data_arrays, options)
     
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
@@ -367,14 +388,16 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         shapes += [[1,fmaps_out] + output_dims]
     # Nhood specifications         (n = #edges, f = 3)
     if (('nhood' in data_arrays[0]) and (options.loss_function == 'malis')):
-        shapes += [list(np.shape(data_arrays[0]))]
+        print "HERE!"
+        shapes += [[1,1] + list(np.shape(data_arrays[0]['nhood']))]
+        print shapes
 
     net_io = NetInputWrapper(net, shapes)
     
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
         
-        if (i % options.test_interval == 0):
+        if (options.test_net != None and i % options.test_interval == 0):
             test_eval.evaluate(i)
         
         # First pick the dataset to train with
@@ -397,10 +420,11 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             if ('components' in data_arrays[dataset]):
                 # These are the labels (connected components)
                 components_slice = slice_data(data_arrays[dataset]['components'][0,:], [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
-                label_slice = malis.seg_to_affgraph(components_slice, data_arrays[0]['nhood'])
-                components_slice = components_slice[None,:]
+                if (label_slice is None or options.recompute_affinity):
+                    label_slice = malis.seg_to_affgraph(components_slice, data_arrays[dataset]['nhood'])
             
-            components_slice,ccSizes = malis.connected_components_affgraph(label_slice, data_arrays[0]['nhood'])
+            if (components_slice is None or options.recompute_affinity):
+                components_slice,ccSizes = malis.connected_components_affgraph(label_slice, data_arrays[dataset]['nhood'])
 
         else:
             label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
@@ -413,8 +437,8 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         if options.loss_function == 'euclid':
             if(options.scale_error == True):
                 frac_pos = np.clip(label_slice.mean(),0.05,0.95)
-                w_pos = np.sqrt(1.0/(2.0*frac_pos))
-                w_neg = np.sqrt(1.0/(2.0*(1.0-frac_pos)))
+                w_pos = 1.0/(2.0*frac_pos)
+                w_neg = 1.0/(2.0*(1.0-frac_pos))
             else:
                 w_pos = 1
                 w_neg = 1
