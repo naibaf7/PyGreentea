@@ -217,9 +217,9 @@ def caffenet(netconf, netmode):
         # Shape specs:
         # 00.    Convolution buffer size
         # 01.    Weight memory size
-        # 03.    Num. channels
-        # 04.    [d] parameter running value
-        # 05.    [w] parameter running value
+        # 02.    Num. channels
+        # 03.    [d] parameter running value
+        # 04.    [w] parameter running value
         run_shape_in = [[0,0,1,[1 for i in range(0,dims)],netconf.input_shape]]
         run_shape_out = run_shape_in
         

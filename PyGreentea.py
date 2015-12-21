@@ -186,12 +186,12 @@ def sanity_check_net_blobs(net):
         failure = False
         first = -1
         for i in range(0,data.shape[0]):
-            if abs(data[i]) > 100000:
+            if abs(data[i]) > 1000:
                 failure = True
                 if first == -1:
                     first = i
                 print 'Failure, location %d; objective %d' % (i, data[i])
-        print 'Failure: %s, first at %d' % (failure,first)
+        print 'Failure: %s, first at %d, mean %3.5f' % (failure,first,np.mean(data))
         if failure:
             break
         
@@ -418,13 +418,12 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
                 
             if ('components' in data_arrays[dataset]):
-                # These are the labels (connected components)
                 components_slice = slice_data(data_arrays[dataset]['components'][0,:], [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
                 if (label_slice is None or options.recompute_affinity):
-                    label_slice = malis.seg_to_affgraph(components_slice, data_arrays[dataset]['nhood'])
+                    label_slice = malis.seg_to_affgraph(components_slice, data_arrays[dataset]['nhood']).astype(float32)
             
             if (components_slice is None or options.recompute_affinity):
-                components_slice,ccSizes = malis.connected_components_affgraph(label_slice, data_arrays[dataset]['nhood'])
+                components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), data_arrays[dataset]['nhood'])
 
         else:
             label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
@@ -451,6 +450,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         
         # Single step
         loss = solver.step(1)
+        # sanity_check_net_blobs(net)
         
         while gc.collect():
             pass
