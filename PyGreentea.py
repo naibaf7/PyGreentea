@@ -388,9 +388,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         shapes += [[1,fmaps_out] + output_dims]
     # Nhood specifications         (n = #edges, f = 3)
     if (('nhood' in data_arrays[0]) and (options.loss_function == 'malis')):
-        print "HERE!"
         shapes += [[1,1] + list(np.shape(data_arrays[0]['nhood']))]
-        print shapes
 
     net_io = NetInputWrapper(net, shapes)
     

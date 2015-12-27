@@ -53,7 +53,7 @@ def data_layer(shape):
     data, label = L.MemoryData(dim=shape, ntop=2)
     return data, label
 
-def conv_relu(run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], kstride=[1], group=1, weight_std=0.01):
+def conv_relu(run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], kstride=[1], group=1, weight_std=0.01, dropout=0, batchnorm=False):
     # The convolution buffer and weight memory
     weight_mem = fsize * num_output * run_shape[-1][2]
     conv_buff = fsize * run_shape[-1][2]
@@ -73,7 +73,19 @@ def conv_relu(run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0
                                 param=[dict(lr_mult=1),dict(lr_mult=2)],
                                 weight_filler=dict(type='gaussian', std=weight_std),
                                 bias_filler=dict(type='constant'))
-    return conv, L.ReLU(conv, in_place=True, negative_slope=0.005)
+    
+    relu = L.ReLU(conv, in_place=True, negative_slope=0.005)
+    last = relu
+    
+    if (dropout > 0):
+        drop = L.Dropout(last, in_place=True, dropout_ratio=dropout)
+        last = drop
+    
+    if (batchnorm == True):
+        bnl = L.BatchNorm(last, in_place=True, param=[dict(lr_mult=0),dict(lr_mult=0),dict(lr_mult=0)])
+        last = bnl
+        
+    return conv, last
 
 def convolution(run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], kstride=[1], group=1, weight_std=0.01):
     # The convolution buffer and weight memory
@@ -149,9 +161,16 @@ def mergecrop(run_shape, bottom_a, bottom_b):
 
     return L.MergeCrop(bottom_a, bottom_b, forward=[1,1], backward=[1,1])
 
-def implement_usknet(netconf, net, run_shape, fmaps_start, fmaps_end):
+def implement_usknet(netconf, netmode, net, run_shape, fmaps_start, fmaps_end):
     # Chained blob list to construct the network (forward direction)
     blobs = []
+
+    dropout = netconf.dropout
+    batchnorm = netconf.batchnorm
+
+    if netmode == caffe_pb2.TEST:
+        dropout = 0
+        batchnorm = False
 
     # All networks start with data
     blobs = blobs + [net.data]
@@ -161,9 +180,9 @@ def implement_usknet(netconf, net, run_shape, fmaps_start, fmaps_end):
     if netconf.unet_depth > 0:
         # U-Net downsampling; 2*Convolution+Pooling
         for i in range(0, netconf.unet_depth):
-            conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))))
+            conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))), batchnorm=batchnorm, dropout=dropout)
             blobs = blobs + [relu]
-            conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))))
+            conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))), batchnorm=batchnorm, dropout=dropout)
             blobs = blobs + [relu]  # This is the blob of interest for mergecrop (index 2 + 3 * i)
             pool = max_pool(run_shape, blobs[-1], kernel_size=netconf.unet_downsampling_strategy[i], stride=netconf.unet_downsampling_strategy[i])
             blobs = blobs + [pool]
@@ -172,9 +191,9 @@ def implement_usknet(netconf, net, run_shape, fmaps_start, fmaps_end):
     
     # If there is no SK-Net component, fill with 2 convolutions
     if (netconf.unet_depth > 0 and netconf.sknet_conv_depth == 0):
-        conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))))
+        conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))), batchnorm=batchnorm, dropout=dropout)
         blobs = blobs + [relu]
-        conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))))
+        conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))), batchnorm=batchnorm, dropout=dropout)
         blobs = blobs + [relu]
     # Else use the SK-Net instead
     else:
@@ -191,9 +210,9 @@ def implement_usknet(netconf, net, run_shape, fmaps_start, fmaps_end):
             # Here, layer (2 + 3 * i) with reversed i (high to low) is picked
             mergec = mergecrop(run_shape, blobs[-1], blobs[-1 + 3 * (netconf.unet_depth - i)])
             blobs = blobs + [mergec]
-            conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))))
+            conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))), batchnorm=batchnorm, dropout=dropout)
             blobs = blobs + [relu]
-            conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))))
+            conv, relu = conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[3], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))), batchnorm=batchnorm, dropout=dropout)
             blobs = blobs + [relu]
             
         conv = convolution(run_shape, blobs[-1], fmaps_end, kernel_size=[1], weight_std=math.sqrt(2.0/float(run_shape[-1][2]*pow(3,len(run_shape[-1][4])))))
@@ -223,7 +242,7 @@ def caffenet(netconf, netmode):
         run_shape_in = [[0,0,1,[1 for i in range(0,dims)],netconf.input_shape]]
         run_shape_out = run_shape_in
         
-        last_blob = implement_usknet(netconf, net, run_shape_out, netconf.fmap_start, netconf.fmap_output)
+        last_blob = implement_usknet(netconf, netmode, net, run_shape_out, netconf.fmap_start, netconf.fmap_output)
 
         # Implement the prediction layer
         if netconf.loss_function == 'malis':
@@ -265,7 +284,7 @@ def caffenet(netconf, netmode):
         run_shape_out = run_shape_in
     
         # Start the actual network
-        last_blob = implement_usknet(netconf, net, run_shape_out, netconf.fmap_start, netconf.fmap_output)
+        last_blob = implement_usknet(netconf, netmode, net, run_shape_out, netconf.fmap_start, netconf.fmap_output)
         
         for i in range(0,len(run_shape_out)):
             print(run_shape_out[i])
