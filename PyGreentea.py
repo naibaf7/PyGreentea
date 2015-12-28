@@ -6,7 +6,6 @@ import math
 import multiprocessing
 import threading
 from Crypto.Random.random import randint
-from gtk import input_add
 
 
 # Determine where PyGreentea is
@@ -323,6 +322,13 @@ class TestNetEvaluator:
     def run_test(self, iteration):
         caffe.select_device(self.options.test_device, False)
         pred_arrays = process(self.test_net, self.data_arrays, shapes=self.shapes, net_io=self.net_io)
+
+        for i in range(0, len(pred_arrays)):
+            h5file = 'test_out_' + repr(i) + '.h5'
+            outhdf5 = h5py.File(h5file, 'w')
+            outdset = outhdf5.create_dataset('main', pred_arrays[i].shape, np.float32, data=pred_arrays[i])
+            # outdset.attrs['nhood'] = np.string_('-1,0,0;0,-1,0;0,0,-1')
+            outhdf5.close()
         
 
     def evaluate(self, iteration):
@@ -455,9 +461,9 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
 
         if options.loss_function == 'euclid' or options.loss_function == 'euclid_aniso':
-            print("[Iter %i] Loss: %s, frac_pos=%f, w_pos=%f" % (i,loss,frac_pos,w_pos))
+            print("[Iter %i] Loss: %f, frac_pos=%f, w_pos=%f" % (i,loss,frac_pos,w_pos))
         else:
-            print("[Iter %i] Loss: %s" % (i,loss))
+            print("[Iter %i] Loss: %f" % (i,loss))
         # TODO: Store losses to file
         losses += [loss]
         
