@@ -298,9 +298,18 @@ def process(net, data_arrays, shapes=None, net_io=None):
             if not incremented:
                 break
             
-        pred_arrays += [pred_array]
+        if 'name' in data_arrays[i]:
+            h5file = data_arrays[i]['name'] + '.h5'
+        else:
+            h5file = 'test_out_' + repr(i) + '.h5'
+        outhdf5 = h5py.File(h5file, 'w')
+        outdset = outhdf5.create_dataset('main', pred_array.shape, np.float32, data=pred_array)
+        # outdset.attrs['nhood'] = np.string_('-1,0,0;0,-1,0;0,0,-1')
+        outhdf5.close()
+        
+        # pred_arrays += [pred_array]
             
-    return pred_arrays
+    # return pred_arrays
       
         
     # Wrapper around a networks 
@@ -321,15 +330,8 @@ class TestNetEvaluator:
             
     def run_test(self, iteration):
         caffe.select_device(self.options.test_device, False)
-        pred_arrays = process(self.test_net, self.data_arrays, shapes=self.shapes, net_io=self.net_io)
+        process(self.test_net, self.data_arrays, shapes=self.shapes, net_io=self.net_io)
 
-        for i in range(0, len(pred_arrays)):
-            h5file = 'test_out_' + repr(i) + '.h5'
-            outhdf5 = h5py.File(h5file, 'w')
-            outdset = outhdf5.create_dataset('main', pred_arrays[i].shape, np.float32, data=pred_arrays[i])
-            # outdset.attrs['nhood'] = np.string_('-1,0,0;0,-1,0;0,0,-1')
-            outhdf5.close()
-        
 
     def evaluate(self, iteration):
         # Test/wait if last test is done
