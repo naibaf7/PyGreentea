@@ -1,0 +1,4 @@
+- imageScan_preds displays the groundtruth image, groundtruth affinity graph, and the predictions
+- imageScan_seg displays the groundtruth image, groundtruth affinity graph, and the predicted segmentation
+- plot_rand.py takes as arguments 1st the output filename, then a list of input folders containing data to plot
+- plot_f.py arguments must be set in the code
