@@ -1,6 +1,7 @@
 import os, sys, inspect, resource, gc
 import h5py
 import numpy as np
+from scipy import io
 import random
 import math
 import multiprocessing
@@ -466,5 +467,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             print("[Iter %i] Loss: %f" % (i,loss))
         # TODO: Store losses to file
         losses += [loss]
-        
+
+        if (i % options.snapshot) == 0:        
+            io.savemat('loss.mat',{'loss':losses})
 
