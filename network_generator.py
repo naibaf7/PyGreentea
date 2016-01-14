@@ -346,7 +346,7 @@ class NetworkGenerator:
         if netconf.unet_depth > 0:
             # U-Net upsampling; Upconvolution+MergeCrop+2*Convolution
             for i in range(0, netconf.unet_depth):
-                deconv, conv = self.upconv(run_shape, blobs[-1], fmaps, netconf.unet_fmap_dec_rule(fmaps), kernel_size=netconf.unet_downsampling_strategy[i], stride=netconf.unet_downsampling_strategy[i], weight_std=math.sqrt(2.0/float(run_shape[-1].fmaps*pow(3,len(run_shape[-1].shape)))))
+                deconv, conv = self.upconv(run_shape, blobs[-1], fmaps, netconf.unet_fmap_dec_rule(fmaps), kernel_size=netconf.unet_downsampling_strategy[netconf.unet_depth - i - 1], stride=netconf.unet_downsampling_strategy[netconf.unet_depth - i - 1], weight_std=math.sqrt(2.0/float(run_shape[-1].fmaps*pow(3,len(run_shape[-1].shape)))))
                 blobs = blobs + [conv]
                 fmaps = netconf.unet_fmap_dec_rule(fmaps)
                 # Here, layer (2 + 3 * i) with reversed i (high to low) is picked
