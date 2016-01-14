@@ -13,8 +13,6 @@ from functools import partial
 import caffe
 from caffe import layers as L, params as P, to_proto
 from caffe.proto import caffe_pb2
-from Cython.Shadow import NULL
-from setuptools import run_2to3_on_doctests
 
 # General variables
 # Size of a float variable in bytes
