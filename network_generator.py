@@ -37,26 +37,21 @@ class NetConf:
     # Number of ouput feature maps
     fmap_output = 3
     # Feature map increase rule (downsampling)
-    def unet_fmap_inc_rule(self, fmaps):
-        return int(math.ceil(fmaps * 3))
+    unet_fmap_inc_rule = lambda self,fmaps: int(math.ceil(fmaps * 3))
     # Feature map decrease rule (upsampling)
-    def unet_fmap_dec_rule(self, fmaps):
-        return int(math.ceil(fmaps / 3))
+    unet_fmap_dec_rule = lambda self,fmaps: int(math.ceil(fmaps / 3))
     # Skewed U-Net downsampling strategy
     unet_downsampling_strategy = [[2,2,2],[2,2,2],[2,2,2]]
     # Number of SK-Net Pooling-Convolution steps (per U-Net bridge)
     sknet_conv_depth = [0]
     # Feature map increase rule
-    def sknet_fmap_inc_rule(self, fmaps):
-        return int(math.ceil(fmaps * 1.5))
+    sknet_fmap_inc_rule = lambda self,fmaps: int(math.ceil(fmaps * 1.5))
     # Number of 1x1 (IP) Convolution steps (per U-Net bridge)
     sknet_ip_depth = [0]
     # Feature map increase rule from SK-Convolution to IP
-    def sknet_fmap_bridge_rule(self, fmaps):
-        return int(math.ceil(fmaps * 4))
+    sknet_fmap_bridge_rule = lambda self,fmaps: int(math.ceil(fmaps * 4))
     # Feature map decrease rule within IP
-    def sknet_fmap_dec_rule(self, fmaps):
-        return int(math.ceil(fmaps / 2.5))
+    sknet_fmap_dec_rule = lambda self,fmaps: int(math.ceil(fmaps / 2.5))
     # Loss function and mode ("malis", "euclid", "softmax")
     loss_function = "euclid"
     # ReLU negative slope
