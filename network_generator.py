@@ -24,24 +24,24 @@ class NetConf:
     mem_global_limit = 10 * 1024 * 1024 * 1024
     # 4 GB single buffer memory limit
     mem_buf_limit = 4 * 1024 * 1024 * 1024
-    # Desired input dimensions (will select closest possible)
+    # Network input dimension
     input_shape = [132,132,132]
-    # Desired output dimensions (will select closest possible)
+    # Corresponding output dimension
     output_shape = [44, 44, 44]
     # Number of U-Net Pooling-Convolution downsampling/upsampling steps
     unet_depth = 3
     # Number of feature maps in the start
-    fmap_start = 32
+    fmap_start = 16
     # Number of input feature maps
     fmap_input = 1
     # Number of ouput feature maps
     fmap_output = 3
     # Feature map increase rule (downsampling)
     def unet_fmap_inc_rule(self, fmaps):
-        return int(math.ceil(fmaps * 4))
+        return int(math.ceil(fmaps * 3))
     # Feature map decrease rule (upsampling)
     def unet_fmap_dec_rule(self, fmaps):
-        return int(math.ceil(fmaps / 4))
+        return int(math.ceil(fmaps / 3))
     # Skewed U-Net downsampling strategy
     unet_downsampling_strategy = [[2,2,2],[2,2,2],[2,2,2]]
     # Number of SK-Net Pooling-Convolution steps (per U-Net bridge)
@@ -66,6 +66,8 @@ class NetConf:
     batchnorm_maf = 0.95
     # Dropout
     dropout = 0.2
+    # Ignore convolution buffer in memory computations
+    ignore_conv_buffer = False
 
 class LayerException(Exception):
     pass
@@ -359,11 +361,12 @@ class NetworkGenerator:
             blobs = blobs + [conv]
         
         
-        if (self.compute_memory_buffers(run_shape) > netconf.mem_buf_limit):
+        if (not netconf.ignore_conv_buffer and self.compute_memory_buffers(run_shape) > netconf.mem_buf_limit):
             raise ConvolutionBufferException("Constraint violated: convolution buffer exceeds limt, %s > %s", self.compute_memory_buffers(run_shape), netconf.mem_buf_limit)
         
         total_memory = 0
-        total_memory += self.compute_memory_buffers(run_shape)
+        if not netconf.ignore_conv_buffer:
+            total_memory += self.compute_memory_buffers(run_shape)
         total_memory += self.compute_memory_aux(run_shape)
         total_memory += self.compute_memory_weights(run_shape)
         total_memory += (1 if (self.mode == caffe_pb2.TEST) else 2) * self.compute_memory_blobs(run_shape)
