@@ -37,9 +37,13 @@ class NetConf:
     # Number of ouput feature maps
     fmap_output = 3
     # Feature map increase rule (downsampling)
-    unet_fmap_inc_rule = lambda self,fmaps: int(math.ceil(fmaps * 3))
+    fmap_inc = 3
+    def unet_fmap_inc_rule(self, fmaps):
+        return int(math.ceil(fmaps * self.fmap_inc))
     # Feature map decrease rule (upsampling)
-    unet_fmap_dec_rule = lambda self,fmaps: int(math.ceil(fmaps / 3))
+    fmap_dec = 3
+    def unet_fmap_dec_rule(self, fmaps):
+        return int(math.ceil(fmaps / self.fmap_dec))
     # Skewed U-Net downsampling strategy
     unet_downsampling_strategy = [[2,2,2],[2,2,2],[2,2,2]]
     # Number of SK-Net Pooling-Convolution steps (per U-Net bridge)
