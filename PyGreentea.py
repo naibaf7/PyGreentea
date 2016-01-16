@@ -468,6 +468,6 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         # TODO: Store losses to file
         losses += [loss]
 
-        if (i % options.snapshot) == 0:        
+        if (hasattr(options, 'loss_snapshot') and i % options.loss_snapshot) == 0:        
             io.savemat('loss.mat',{'loss':losses})
 
