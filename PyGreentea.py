@@ -456,27 +456,10 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 
         # These are the raw data elements
         data_slice = slice_data(data_arrays[dataset]['data'], [0]+offsets, [fmaps_in]+[output_dims[di] + input_padding[di] for di in range(0, dims)])
-
-        label_slice = None
-        components_slice = None
-
-        if (options.training_method == 'affinity'):
-            if ('label' in data_arrays[dataset]):
-                label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
-                
-            # if ('components' in data_arrays[dataset]):
-            #     components_slice = slice_data(data_arrays[dataset]['components'][0,:], [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
-            #     if (label_slice is None or options.recompute_affinity):
-            #         label_slice = malis.seg_to_affgraph(components_slice, data_arrays[dataset]['nhood']).astype(float32)
-            # 
-            # if (components_slice is None or options.recompute_affinity):
-            #     components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), data_arrays[dataset]['nhood'])
-
-        else:
-            label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
-
+        label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
 
         if options.loss_function == 'malis':
+            components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), data_arrays[dataset]['nhood'])
             # Also recomputing the corresponding labels (connected components)
             net_io.setInputs([data_slice, label_slice, components_slice, data_arrays[0]['nhood']])
             
