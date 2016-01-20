@@ -154,6 +154,49 @@ def count_affinity(dataset):
 
 def border_reflect(dataset, border):
     return np.pad(dataset,((border, border)),'reflect')
+
+
+def augment_data_simple(dataset):
+    nset = len(dataset)
+    for iset in range(nset):
+        for reflectz in range(2):
+            for reflecty in range(2):
+                for reflectx in range(2):
+                    for swapxy in range(2):
+
+                        if reflectz==0 and reflecty==0 and reflectx==0 and swapxy==0:
+                            continue
+
+                        dataset.append({})
+                        dataset[-1]['name'] = dataset[iset]['name']
+                        dataset[-1]['nhood'] = dataset[iset]['nhood']
+                        dataset[-1]['data'] = dataset[iset]['data'][:]
+                        dataset[-1]['components'] = dataset[iset]['components'][:]
+
+                        if reflectz:
+                            dataset[-1]['data']         = dataset[-1]['data'][::-1,:,:]
+                            dataset[-1]['components']   = dataset[-1]['components'][::-1,:,:]
+
+                        if reflecty:
+                            dataset[-1]['data']         = dataset[-1]['data'][:,::-1,:]
+                            dataset[-1]['components']   = dataset[-1]['components'][:,::-1,:]
+
+                        if reflectx:
+                            dataset[-1]['data']         = dataset[-1]['data'][:,:,::-1]
+                            dataset[-1]['components']   = dataset[-1]['components'][:,:,::-1]
+
+                        if swapxy:
+                            dataset[-1]['data']         = dataset[-1]['data'].transpose((0,2,1))
+                            dataset[-1]['components']   = dataset[-1]['components'].transpose((0,2,1))
+
+                        dataset[-1]['label'] = malis.seg_to_affgraph(dataset[-1]['components'],dataset[-1]['nhood'])
+
+                        dataset[-1]['reflectz']=reflectz
+                        dataset[-1]['reflecty']=reflecty
+                        dataset[-1]['reflectx']=reflectx
+                        dataset[-1]['swapxy']=swapxy
+    return dataset
+
     
     
 def slice_data(data, offsets, sizes):
@@ -258,7 +301,6 @@ def process(net, data_arrays, shapes=None, net_io=None):
     dummy_slice = [0]
     
     pred_arrays = []
-    
     for i in range(0, len(data_arrays)):
         data_array = data_arrays[i]['data']
         dims = len(data_array.shape)
@@ -422,13 +464,13 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             if ('label' in data_arrays[dataset]):
                 label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
                 
-            if ('components' in data_arrays[dataset]):
-                components_slice = slice_data(data_arrays[dataset]['components'][0,:], [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
-                if (label_slice is None or options.recompute_affinity):
-                    label_slice = malis.seg_to_affgraph(components_slice, data_arrays[dataset]['nhood']).astype(float32)
-            
-            if (components_slice is None or options.recompute_affinity):
-                components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), data_arrays[dataset]['nhood'])
+            # if ('components' in data_arrays[dataset]):
+            #     components_slice = slice_data(data_arrays[dataset]['components'][0,:], [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], output_dims)
+            #     if (label_slice is None or options.recompute_affinity):
+            #         label_slice = malis.seg_to_affgraph(components_slice, data_arrays[dataset]['nhood']).astype(float32)
+            # 
+            # if (components_slice is None or options.recompute_affinity):
+            #     components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), data_arrays[dataset]['nhood'])
 
         else:
             label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
@@ -468,6 +510,6 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         # TODO: Store losses to file
         losses += [loss]
 
-        if (hasattr(options, 'loss_snapshot') and i % options.loss_snapshot) == 0:        
+        if hasattr(options, 'loss_snapshot') and ((i % options.loss_snapshot) == 0):
             io.savemat('loss.mat',{'loss':losses})
 
