@@ -97,6 +97,8 @@ class NetInputWrapper:
                 
     def setInputs(self, data):      
         for i in range(0,len(self.shapes)):
+            print(self.inputs[i].shape)
+            print(data[i].shape)
             np.copyto(self.inputs[i], np.ascontiguousarray(data[i]).astype(float32))
             self.net.set_input_arrays(i, self.inputs[i], self.dummy_slice)
                   
@@ -470,8 +472,8 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 w_neg = 1.0/(2.0*(1.0-frac_pos))
             else:
                 w_pos = 1
-                w_neg = 1
-                      
+                w_neg = 1          
+            
             net_io.setInputs([data_slice, label_slice, error_scale(label_slice,w_neg,w_pos)])
 
         if options.loss_function == 'softmax':

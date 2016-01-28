@@ -41,7 +41,7 @@ class UNetConf:
     # Feature map decrease rule (upsampling)
     unet_fmap_dec_rule = lambda self,fmaps: int(math.ceil(float(fmaps) / 3))
     # Skewed U-Net downsampling strategy
-    unet_downsampling_strategy = [[2,2,2],[2,2,2],[2,2,2]]
+    unet_downsampling_strategy = [[2],[2],[2]]
     # U-Net convolution setup (downsampling path)
     unet_conv_down = [[[3],[3]]]
     # U-Net convolution setup (upsampling path)
