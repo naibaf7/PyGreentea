@@ -1,11 +1,10 @@
-import os, sys, inspect, resource, gc
+import os, sys, inspect, gc
 import h5py
 import numpy as np
 from scipy import io
-import random
 import math
-import multiprocessing
 import threading
+import png
 from Crypto.Random.random import randint
 
 
@@ -97,8 +96,6 @@ class NetInputWrapper:
                 
     def setInputs(self, data):      
         for i in range(0,len(self.shapes)):
-            print(self.inputs[i].shape)
-            print(data[i].shape)
             np.copyto(self.inputs[i], np.ascontiguousarray(data[i]).astype(float32))
             self.net.set_input_arrays(i, self.inputs[i], self.dummy_slice)
                   
@@ -240,6 +237,19 @@ def sanity_check_net_blobs(net):
         if failure:
             break
         
+def dump_feature_maps(net, folder):
+    for key in net.blobs.keys():
+        dst = net.blobs[key]
+        norm = normalize(dst.data[0], 0, 255)
+        # print(norm.shape)
+        for f in range(0,norm.shape[0]):
+            outfile = open(folder+'/'+key+'_'+str(f)+'.png', 'wb')
+            writer = png.Writer(norm.shape[2], norm.shape[1], greyscale=True)
+            # print(np.uint8(norm[f,:]).shape)
+            writer.write(outfile, np.uint8(norm[f,:]))
+            outfile.close()
+                
+        
 def get_net_input_specs(net, test_blobs = ['data', 'label', 'scale', 'label_affinity', 'affinty_edges']):
     
     shapes = []
@@ -260,6 +270,7 @@ def get_spatial_io_dims(net):
     shapes = get_net_input_specs(net, test_blobs=['data', out_primary])
         
     dims = len(shapes[0][1]) - 2
+    print(dims)
     
     input_dims = list(shapes[0][1])[2:2+dims]
     output_dims = list(shapes[1][1])[2:2+dims]
@@ -305,20 +316,20 @@ def process(net, data_arrays, shapes=None, net_io=None):
     pred_arrays = []
     for i in range(0, len(data_arrays)):
         data_array = data_arrays[i]['data']
-        dims = len(data_array.shape)
+        data_dims = len(data_array.shape)
         
         offsets = []        
         in_dims = []
         out_dims = []
         for d in range(0, dims):
             offsets += [0]
-            in_dims += [data_array.shape[d]]
-            out_dims += [data_array.shape[d] - input_padding[d]]
+            in_dims += [data_array.shape[data_dims-dims+d]]
+            out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
             
         pred_array = np.zeros(tuple([fmaps_out] + out_dims))
                 
         while(True):
-            data_slice = slice_data(data_array, offsets, [output_dims[di] + input_padding[di] for di in range(0, dims)])
+            data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
             net_io.setInputs([data_slice])
             net.forward()
             output = dst.data[0].copy()

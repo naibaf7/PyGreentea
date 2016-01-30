@@ -380,7 +380,7 @@ class NetworkGenerator:
             # If there is no SK-Net component, fill with normal convolutions
             if (unetconf.unet_depth > 0 and (len(unetconf.sk_netconfs) - 1 < unetconf.unet_depth or unetconf.sk_netconfs[unetconf.unet_depth] == None)):
                 convolution_config = unetconf.unet_conv_down[min(unetconf.unet_depth, len(unetconf.unet_conv_down) - 1)]
-                for j in range(0,len(convolution_config) - 1):
+                for j in range(0,len(convolution_config)):
                     conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                     blobs = blobs + [relu]
             else:
