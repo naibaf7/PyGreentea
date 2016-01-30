@@ -200,6 +200,49 @@ def augment_data_simple(dataset):
     return dataset
 
     
+def augment_data_elastic(dataset,ncopy_per_dset):
+    dsetout = []
+    nset = len(dataset)
+    for iset in range(nset):
+        for icopy in range(ncopy_per_dset):
+            reflectz = np.random.rand()>.5
+            reflecty = np.random.rand()>.5
+            reflectx = np.random.rand()>.5
+            swapxy = np.random.rand()>.5
+
+            dataset.append({})
+            dataset[-1]['reflectz']=reflectz
+            dataset[-1]['reflecty']=reflecty
+            dataset[-1]['reflectx']=reflectx
+            dataset[-1]['swapxy']=swapxy
+
+            dataset[-1]['name'] = dataset[iset]['name']
+            dataset[-1]['nhood'] = dataset[iset]['nhood']
+            dataset[-1]['data'] = dataset[iset]['data'][:]
+            dataset[-1]['components'] = dataset[iset]['components'][:]
+
+            if reflectz:
+                dataset[-1]['data']         = dataset[-1]['data'][::-1,:,:]
+                dataset[-1]['components']   = dataset[-1]['components'][::-1,:,:]
+
+            if reflecty:
+                dataset[-1]['data']         = dataset[-1]['data'][:,::-1,:]
+                dataset[-1]['components']   = dataset[-1]['components'][:,::-1,:]
+
+            if reflectx:
+                dataset[-1]['data']         = dataset[-1]['data'][:,:,::-1]
+                dataset[-1]['components']   = dataset[-1]['components'][:,:,::-1]
+
+            if swapxy:
+                dataset[-1]['data']         = dataset[-1]['data'].transpose((0,2,1))
+                dataset[-1]['components']   = dataset[-1]['components'].transpose((0,2,1))
+
+            # elastic deformations
+
+            dataset[-1]['label'] = malis.seg_to_affgraph(dataset[-1]['components'],dataset[-1]['nhood'])
+
+    return dataset
+
     
 def slice_data(data, offsets, sizes):
     if (len(offsets) == 1):
@@ -369,7 +412,10 @@ class TestNetEvaluator:
         pred_arrays = process(self.test_net, self.data_arrays, shapes=self.shapes, net_io=self.net_io)
 
         for i in range(0, len(pred_arrays)):
-            h5file = 'test_out_' + repr(i) + '.h5'
+            if ('name' in self.data_arrays[i]):
+                h5file = self.data_arrays[i]['name'] + '.h5'
+            else:
+                h5file = 'test_out_' + repr(i) + '.h5'
             outhdf5 = h5py.File(h5file, 'w')
             outdset = outhdf5.create_dataset('main', pred_arrays[i].shape, np.float32, data=pred_arrays[i])
             # outdset.attrs['nhood'] = np.string_('-1,0,0;0,-1,0;0,0,-1')
