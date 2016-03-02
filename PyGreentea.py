@@ -6,6 +6,7 @@ import math
 import threading
 import png
 from Crypto.Random.random import randint
+import numpy.random
 
 
 # Determine where PyGreentea is
@@ -516,6 +517,17 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         # These are the raw data elements
         data_slice = slice_data(data_arrays[dataset]['data'], [0]+offsets, [fmaps_in]+[output_dims[di] + input_padding[di] for di in range(0, dims)])
         label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
+
+        # transform the input
+        # this code assumes that the original input pixel values are scaled between (0,1)
+        if 'transform' in data_arrays[dataset]:
+            # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+            lo, hi = data_arrays[dataset]['transform']['scale']
+            data_slice = 0.5 + (data_slice-0.5)*np.random.uniform(low=lo,high=hi)
+            lo, hi = data_arrays[dataset]['transform']['shift']
+            data_slice = data_slice + np.random.uniform(low=lo,high=hi)
+            # print('Post:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+
 
         if options.loss_function == 'malis':
             components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), data_arrays[dataset]['nhood'])
