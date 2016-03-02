@@ -197,12 +197,10 @@ class NetworkGenerator:
 
     def deconv_relu(self, run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], group=1, weight_std=0.01):
         update = RunShapeUpdater()
-                
-        deconv = L.Deconvolution(bottom, kernel_size=kernel_size, stride=stride, dilation=run_shape[-1].dilation,
+        deconv = L.Deconvolution(bottom, convolution_param=dict(kernel_size=kernel_size, stride=stride, dilation=run_shape[-1].dilation,
                                     num_output=num_output, pad=pad, group=group,
-                                    param=[dict(lr_mult=1),dict(lr_mult=2)],
                                     weight_filler=dict(type='gaussian', std=weight_std),
-                                    bias_filler=dict(type='constant'))
+                                    bias_filler=dict(type='constant')), param=[dict(lr_mult=1),dict(lr_mult=2)])
         
         relu = L.ReLU(deconv, in_place=True, negative_slope=self.netconf.relu_slope)
         last = relu
