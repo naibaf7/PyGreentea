@@ -50,7 +50,7 @@ def sys_info():
 
 
 def install_dependencies():
-    # We support Fedora (22/23) and Ubuntu (14.05/15.05)
+    # We support Fedora (22/23/24) and Ubuntu (14.05/15.05)
     if (linux_distribution()[0].lower() == "fedora"):
         # TODO: Add missing Fedora packages
         os.system('dnf install -y git gcc')

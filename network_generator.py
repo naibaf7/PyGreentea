@@ -48,6 +48,8 @@ class UNetConf:
     unet_conv_up = [[[3],[3]]]
     # SK-Net configurations
     sk_netconfs = []
+    # Upsampling path with deconvolutions instead of convolutions
+    use_deconvolution_uppath = False
 
 # Create the network we want
 class NetConf:
@@ -192,7 +194,49 @@ class NetworkGenerator:
     def data_layer(self, shape):
         data, label = L.MemoryData(dim=shape, ntop=2)
         return data, label
-    
+
+    def deconv_relu(self, run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], group=1, weight_std=0.01):
+        update = RunShapeUpdater()
+                
+        deconv = L.Deconvolution(bottom, kernel_size=kernel_size, stride=stride, dilation=run_shape[-1].dilation,
+                                    num_output=num_output, pad=pad, group=group,
+                                    param=[dict(lr_mult=1),dict(lr_mult=2)],
+                                    weight_filler=dict(type='gaussian', std=weight_std),
+                                    bias_filler=dict(type='constant'))
+        
+        relu = L.ReLU(deconv, in_place=True, negative_slope=self.netconf.relu_slope)
+        last = relu
+        
+        if (self.netconf.dropout > 0):
+            drop = L.Dropout(last, in_place=True, dropout_ratio=self.netconf.dropout)
+            last = drop
+        
+        if (self.netconf.use_batchnorm == True):
+            bnl = L.BatchNorm(last, in_place=True,
+                              param=[dict(lr_mult=0,decay_mult=0),dict(lr_mult=0,decay_mult=0),dict(lr_mult=0,decay_mult=0)],
+                              batch_norm_param=dict(use_global_stats=(self.mode == caffe_pb2.TEST), moving_average_fraction=self.netconf.batchnorm_maf))
+            last = bnl
+            # Auxiliary memory consumption here is mean and variance of the input
+            update.aux_mem_update = lambda x: fsize * 2 * num_output * reduce(lambda y, z: y*z, [run_shape[-1].shape[i] - (kernel_size[min(i,len(kernel_size)-1)] - 1) * (run_shape[-1].dilation[i]) for i in range(0, len(run_shape[-1].shape))])
+        
+        
+        # The convolution buffer and weight memory
+        weight_mem = fsize * num_output * run_shape[-1].fmaps
+        conv_buff = fsize * run_shape[-1].fmaps
+        for i in range(0,len(run_shape[-1].shape)):        
+            conv_buff *= kernel_size[min(i,len(kernel_size)-1)]
+            conv_buff *= run_shape[-1].shape[i]
+            weight_mem *= kernel_size[min(i,len(kernel_size)-1)]
+        
+        # Shape update rules
+        update.conv_buffer_mem_update = lambda x: conv_buff
+        update.weight_mem_update = lambda x: weight_mem
+        update.fmaps_update = lambda x: num_output
+        update.shape_update = lambda x: [x[i] + (kernel_size[min(i,len(kernel_size)-1)] - 1) * (run_shape[-1].dilation[i]) for i in range(0, len(x))]
+        self.update_shape(run_shape, update)
+        
+        return deconv, last
+
     def conv_relu(self, run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], group=1, weight_std=0.01):
         update = RunShapeUpdater()
                 
@@ -381,8 +425,14 @@ class NetworkGenerator:
             if (unetconf.unet_depth > 0 and (len(unetconf.sk_netconfs) - 1 < unetconf.unet_depth or unetconf.sk_netconfs[unetconf.unet_depth] == None)):
                 convolution_config = unetconf.unet_conv_down[min(unetconf.unet_depth, len(unetconf.unet_conv_down) - 1)]
                 for j in range(0,len(convolution_config)):
-                    conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
-                    blobs = blobs + [relu]
+                    # Here we are at the bottom, so the second half of the convolutions already belongs to the up-path
+                    if (unetconf.use_deconvolution_uppath and j >= len(convolution_config)/2):
+                        deconv, relu = self.deconv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                        blobs = blobs + [relu]
+                    else:
+                        conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                        blobs = blobs + [relu]
+
             else:
                 blobs, run_shape = self.implement_sknet(netconf, unetconf.sk_netconfs[unetconf.unet_depth], net, run_shape, blobs, unetconf.sk_netconfs[unetconf.unet_depth].sknet_fmap_inc_rule(fmaps))
                 fmaps = run_shape[-1].fmaps
@@ -417,8 +467,12 @@ class NetworkGenerator:
                     
                     convolution_config = unetconf.unet_conv_up[min(unetconf.unet_depth - i - 1, len(unetconf.unet_conv_up) - 1)]
                     for j in range(0,len(convolution_config)):
-                        conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
-                        blobs = blobs + [relu]
+                        if (unetconf.use_deconvolution_uppath):
+                            deconv, relu = self.deconv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                            blobs = blobs + [relu]
+                        else:
+                            conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                            blobs = blobs + [relu]
                                
         conv = self.convolution(run_shape, blobs[-1], fmaps_end, kernel_size=[1], weight_std=self.weight_filler(run_shape[-1], [1]))
         blobs = blobs + [conv]
@@ -661,7 +715,6 @@ def caffenet(netconf, netmode):
             net.silence = L.Silence(net.datai, net.labeli, net.scalei, ntop=0)
 
         if netconf.loss_function == 'softmax':
-            # Currently only supports binary classification
             net.label, net.labeli = netgen.data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
             net.silence = L.Silence(net.datai, net.labeli, ntop=0)
         
