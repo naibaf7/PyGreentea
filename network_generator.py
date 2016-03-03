@@ -257,7 +257,7 @@ class NetworkGenerator:
                               batch_norm_param=dict(use_global_stats=(self.mode == caffe_pb2.TEST), moving_average_fraction=self.netconf.batchnorm_maf))
             last = bnl
             # Auxiliary memory consumption here is mean and variance of the input
-            update.aux_mem_update = lambda x: fsize * 2 * num_output * reduce(lambda y, z: y*z, [run_shape[-1].shape[i] - (kernel_size[min(i,len(kernel_size)-1)] - 1) * (run_shape[-1].dilation[i]) for i in range(0, len(run_shape[-1].shape))])
+            update.aux_mem_update = lambda x: fsize * 2 * num_output * reduce(lambda y, z: y*z, [run_shape[-1].shape[i] for i in range(0, len(run_shape[-1].shape))])
         
         
         # The convolution buffer and weight memory
@@ -272,7 +272,7 @@ class NetworkGenerator:
         update.conv_buffer_mem_update = lambda x: conv_buff
         update.weight_mem_update = lambda x: weight_mem
         update.fmaps_update = lambda x: num_output
-        update.shape_update = lambda x: [x[i] - (kernel_size[min(i,len(kernel_size)-1)] - 1) * (run_shape[-1].dilation[i]) for i in range(0, len(x))]
+        update.shape_update = lambda x: [x[i] + 2*pad[min(i,len(pad)-1)] - (kernel_size[min(i,len(kernel_size)-1)] - 1) * (run_shape[-1].dilation[i]) for i in range(0, len(x))]
         self.update_shape(run_shape, update)
         
         return conv, last
@@ -292,7 +292,7 @@ class NetworkGenerator:
         update.conv_buffer_mem_update = lambda x: conv_buff
         update.weight_mem_update = lambda x: weight_mem
         update.fmaps_update = lambda x: num_output
-        update.shape_update = lambda x: [x[i] - (kernel_size[min(i,len(kernel_size)-1)] - 1) * (run_shape[-1].dilation[i]) for i in range(0, len(x))]
+        update.shape_update = lambda x: [x[i] + 2*pad[min(i,len(pad)-1)] - (kernel_size[min(i,len(kernel_size)-1)] - 1) * (run_shape[-1].dilation[i]) for i in range(0, len(x))]
         self.update_shape(run_shape, update)
         
         return L.Convolution(bottom, kernel_size=kernel_size, stride=stride, dilation=run_shape[-1].dilation,
@@ -425,7 +425,7 @@ class NetworkGenerator:
                 for j in range(0,len(convolution_config)):
                     # Here we are at the bottom, so the second half of the convolutions already belongs to the up-path
                     if (unetconf.use_deconvolution_uppath and j >= len(convolution_config)/2):
-                        deconv, relu = self.deconv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                        conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], pad=[convolution_config[j][i] - 1 for i in range(0,len(convolution_config[j]))], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                         blobs = blobs + [relu]
                     else:
                         conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
@@ -466,7 +466,7 @@ class NetworkGenerator:
                     convolution_config = unetconf.unet_conv_up[min(unetconf.unet_depth - i - 1, len(unetconf.unet_conv_up) - 1)]
                     for j in range(0,len(convolution_config)):
                         if (unetconf.use_deconvolution_uppath):
-                            deconv, relu = self.deconv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                            conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], pad=[convolution_config[j][i] - 1 for i in range(0,len(convolution_config[j]))], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                             blobs = blobs + [relu]
                         else:
                             conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
