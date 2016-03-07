@@ -281,8 +281,6 @@ class NetworkGenerator:
         if (bridge_in != None):
             bridge_bottom = bridge_in
             bridge_bottom_index = bridge_in_index
-            print(bridge_bottom_index)
-            print(len(run_shape))
             # Make the number of feature maps fit for addition: y = f(x) + W*x
             if (run_shape[-1].fmaps != run_shape[bridge_bottom_index].fmaps):
                 run_shape_bridge = [run_shape[bridge_bottom_index]]
