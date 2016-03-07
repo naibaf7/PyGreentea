@@ -50,6 +50,10 @@ class UNetConf:
     sk_netconfs = []
     # Upsampling path with deconvolutions instead of convolutions
     use_deconvolution_uppath = False
+    # Deep residual network bridging
+    bridge = False
+    # Bridge operation ('add' or 'stack')
+    bridge_op = 'add'
 
 # Create the network we want
 class NetConf:
@@ -235,7 +239,14 @@ class NetworkGenerator:
         
         return deconv, last
 
-    def conv_relu(self, run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], group=1, weight_std=0.01):
+    # Convolution block. Order of operations:
+    # 1. Convolution
+    # 2. Shortcut/bridge (IN and OUT) (residual DNN)
+    # 3. Dropout
+    # 4. Batchnorm
+    # 5. ReLU
+    # References: http://torch.ch/blog/2016/02/04/resnets.html, https://github.com/KaimingHe/deep-residual-networks
+    def conv_relu(self, run_shape, bottom, num_output, bridge_in = None, bridge_in_index = -1, bridge_op='add', kernel_size=[3], stride=[1], pad=[0], group=1, weight_std=0.01):
         update = RunShapeUpdater()
                 
         conv = L.Convolution(bottom, kernel_size=kernel_size, stride=stride, dilation=run_shape[-1].dilation,
@@ -243,22 +254,11 @@ class NetworkGenerator:
                                     param=[dict(lr_mult=1),dict(lr_mult=2)],
                                     weight_filler=dict(type='gaussian', std=weight_std),
                                     bias_filler=dict(type='constant'))
-        
-        relu = L.ReLU(conv, in_place=True, negative_slope=self.netconf.relu_slope)
-        last = relu
-        
-        if (self.netconf.dropout > 0):
-            drop = L.Dropout(last, in_place=True, dropout_ratio=self.netconf.dropout)
-            last = drop
+        last = conv
         
         if (self.netconf.use_batchnorm == True):
-            bnl = L.BatchNorm(last, in_place=True,
-                              param=[dict(lr_mult=0,decay_mult=0),dict(lr_mult=0,decay_mult=0),dict(lr_mult=0,decay_mult=0)],
-                              batch_norm_param=dict(use_global_stats=(self.mode == caffe_pb2.TEST), moving_average_fraction=self.netconf.batchnorm_maf))
-            last = bnl
             # Auxiliary memory consumption here is mean and variance of the input
             update.aux_mem_update = lambda x: fsize * 2 * num_output * reduce(lambda y, z: y*z, [run_shape[-1].shape[i] for i in range(0, len(run_shape[-1].shape))])
-        
         
         # The convolution buffer and weight memory
         weight_mem = fsize * num_output * run_shape[-1].fmaps
@@ -275,7 +275,42 @@ class NetworkGenerator:
         update.shape_update = lambda x: [x[i] + 2*pad[min(i,len(pad)-1)] - (kernel_size[min(i,len(kernel_size)-1)] - 1) * (run_shape[-1].dilation[i]) for i in range(0, len(x))]
         self.update_shape(run_shape, update)
         
-        return conv, last
+        # Deep residual / shortcut / bridge (add or stack)
+        bridge_out_index = -1
+        bridge_out = None
+        if (bridge_in != None):
+            bridge_bottom = bridge_in
+            bridge_bottom_index = bridge_in_index
+            print(bridge_bottom_index)
+            print(len(run_shape))
+            # Make the number of feature maps fit for addition: y = f(x) + W*x
+            if (run_shape[-1].fmaps != run_shape[bridge_bottom_index].fmaps):
+                run_shape_bridge = [run_shape[bridge_bottom_index]]
+                bridge_bottom = self.convolution(run_shape_bridge, bridge_bottom, run_shape[-1].fmaps, kernel_size=[1])
+                run_shape = run_shape[0:-1] + [run_shape_bridge[-1]] + [run_shape[-1]]
+                bridge_bottom_index = len(run_shape) - 1
+                
+            bridge_out = self.mergecrop(run_shape, bridge_bottom_index, last, bridge_bottom, op=bridge_op)
+            bridge_out_index = len(run_shape) - 1
+            last = bridge_out
+        
+        # Dropout
+        if (self.netconf.dropout > 0):
+            drop = L.Dropout(last, in_place=True, dropout_ratio=self.netconf.dropout)
+            last = drop
+        
+        # Batchnorm
+        if (self.netconf.use_batchnorm == True):
+            bnl = L.BatchNorm(last, in_place=True,
+                              param=[dict(lr_mult=0,decay_mult=0),dict(lr_mult=0,decay_mult=0),dict(lr_mult=0,decay_mult=0)],
+                              batch_norm_param=dict(use_global_stats=(self.mode == caffe_pb2.TEST), moving_average_fraction=self.netconf.batchnorm_maf))
+            last = bnl
+
+        # Activation
+        relu = L.ReLU(last, in_place=True, negative_slope=self.netconf.relu_slope)
+        last = relu
+        
+        return conv, last, bridge_out, bridge_out_index
     
     def convolution(self, run_shape, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], group=1, weight_std=0.01):
         update = RunShapeUpdater()
@@ -351,14 +386,17 @@ class NetworkGenerator:
                                 bias_filler=dict(type='constant'))
         return deconv, conv
     
-    def mergecrop(self, run_shape, run_shape_b_index, bottom_a, bottom_b):
+    def mergecrop(self, run_shape, run_shape_b_index, bottom_a, bottom_b, op = 'stack'):
         run_shape_a = run_shape[-1]
         run_shape_b = run_shape[run_shape_b_index]
         # Shape update rules
         update = RunShapeUpdater()
-        update.fmaps_update = lambda x: run_shape_a.fmaps + run_shape_b.fmaps
+        if (op == 'stack'):
+            update.fmaps_update = lambda x: run_shape_a.fmaps + run_shape_b.fmaps
+        else:
+            update.fmaps_update = lambda x: run_shape_a.fmaps
         self.update_shape(run_shape, update)
-        return L.MergeCrop(bottom_a, bottom_b, forward=[1,1], backward=[1,1])
+        return L.MergeCrop(bottom_a, bottom_b, forward=[1,1], backward=[1,1], operation=(0 if (op == 'stack') else 1))
     
     def weight_filler(self, shape, ksizes):
         return math.sqrt(2.0/float(shape.fmaps*reduce(lambda a,b: a * b, [abs(ksizes[min(i, len(ksizes)-1)]) for i in range(0,len(shape.shape))])))
@@ -374,7 +412,7 @@ class NetworkGenerator:
                 if((sw_shape[j] - (final_ksize[j] - 1)) % 2 == 0):
                     final_ksize[j] += 1
                 sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) / 2
-            conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=final_ksize, weight_std=self.weight_filler(run_shape[-1], final_ksize))
+            conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=final_ksize, weight_std=self.weight_filler(run_shape[-1], final_ksize))
             blobs = blobs + [relu]
             pool = self.max_pool(run_shape, blobs[-1], kernel_size=[2], stride=[1], dilation=[dilation])
             blobs = blobs + [pool]
@@ -383,14 +421,14 @@ class NetworkGenerator:
 
         fmaps = sknetconf.sknet_fmap_bridge_rule(fmaps)
         # 1st IP layer
-        conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=sw_shape, weight_std=self.weight_filler(run_shape[-1], sw_shape))
+        conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=sw_shape, weight_std=self.weight_filler(run_shape[-1], sw_shape))
         blobs = blobs + [relu]
         run_shape[-1].dilation = [1 for i in range(0,len(run_shape[-1].dilation))]
             
         # Remaining IP layers
         for i in range(0, sknetconf.sknet_ip_depth - 1):
             fmaps = sknetconf.sknet_fmap_dec_rule(fmaps)
-            conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[1], weight_std=self.weight_filler(run_shape[-1], [1]))
+            conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[1], weight_std=self.weight_filler(run_shape[-1], [1]))
             blobs = blobs + [relu]
         
         return blobs, run_shape
@@ -402,6 +440,10 @@ class NetworkGenerator:
         
         fmaps = fmaps_start
         
+        # At the start of the network, bridge input is network input
+        bridge_in = blobs[-1]
+        bridge_in_index = len(run_shape) - 1
+        
         for uidx in range(0,len(netconf.u_netconfs)):
             unetconf = netconf.u_netconfs[uidx]
             mergecrop_tracker = []
@@ -410,7 +452,7 @@ class NetworkGenerator:
                 for i in range(0, unetconf.unet_depth):
                     convolution_config = unetconf.unet_conv_down[min(i,len(unetconf.unet_conv_down) - 1)]
                     for j in range(0,len(convolution_config)):
-                        conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                        conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                         blobs = blobs + [relu]
     
                     mergecrop_tracker += [[len(blobs)-1,len(run_shape)-1]]
@@ -425,10 +467,10 @@ class NetworkGenerator:
                 for j in range(0,len(convolution_config)):
                     # Here we are at the bottom, so the second half of the convolutions already belongs to the up-path
                     if (unetconf.use_deconvolution_uppath and j >= len(convolution_config)/2):
-                        conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], pad=[convolution_config[j][i] - 1 for i in range(0,len(convolution_config[j]))], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                        conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], pad=[convolution_config[j][k] - 1 for k in range(0,len(convolution_config[j]))], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                         blobs = blobs + [relu]
                     else:
-                        conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                        conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                         blobs = blobs + [relu]
 
             else:
@@ -450,7 +492,7 @@ class NetworkGenerator:
                     # Insert SK-Net in the mergecrop bridge
                     if (len(unetconf.sk_netconfs) > unetconf.unet_depth - i - 1 and unetconf.sk_netconfs[unetconf.unet_depth - i - 1] != None):
                         sknet_conf = copy.deepcopy(unetconf.sk_netconfs[unetconf.unet_depth - i - 1])
-                        sknet_conf.sknet_padding = [run_shape[pre_merge_shape_index].shape[i] - run_shape[-1].shape[i] for i in range(0,len(run_shape[-1].shape))]
+                        sknet_conf.sknet_padding = [run_shape[pre_merge_shape_index].shape[k] - run_shape[-1].shape[k] for k in range(0,len(run_shape[-1].shape))]
                         sk_run_shape = [run_shape[pre_merge_shape_index]]
                         pre_merge_blobs, sk_run_shape = self.implement_sknet(netconf, sknet_conf, net, sk_run_shape, pre_merge_blobs, sknet_conf.sknet_fmap_inc_rule(run_shape[pre_merge_shape_index].fmaps))
                         new_run_shape = run_shape[0:pre_merge_shape_index]+sk_run_shape
@@ -465,12 +507,22 @@ class NetworkGenerator:
                     
                     convolution_config = unetconf.unet_conv_up[min(unetconf.unet_depth - i - 1, len(unetconf.unet_conv_up) - 1)]
                     for j in range(0,len(convolution_config)):
-                        if (unetconf.use_deconvolution_uppath):
-                            conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], pad=[convolution_config[j][i] - 1 for i in range(0,len(convolution_config[j]))], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
-                            blobs = blobs + [relu]
-                        else:
-                            conv, relu = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
-                            blobs = blobs + [relu]
+                        pad =  [convolution_config[j][k] - 1 for k in range(0,len(convolution_config[j]))] if (unetconf.use_deconvolution_uppath) else [0]                       
+                        conv, relu, bridge, bridge_index = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j],
+                                                    bridge_in=(bridge_in if (unetconf.bridge == True and j == len(convolution_config)-1 and i == unetconf.unet_depth-1) else None),
+                                                    bridge_in_index=bridge_in_index,
+                                                    pad=pad, weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                        # Update shortcut / bridge input to jump the next U-Net
+                        if (j == len(convolution_config)-1 and i == unetconf.unet_depth-1):
+                            if (unetconf.bridge == True and bridge != None):
+                                # The current U-Net is bridged, so use the bridge output after the last bridge
+                                bridge_in = bridge
+                                bridge_in_index = bridge_index
+                            else:
+                                # The current U-Netis not bridged, so use the output of the last convolution (before ReLU)
+                                bridge_in = conv
+                                bridge_in_index = len(run_shape) - 1
+                        blobs = blobs + [relu]
                                
         conv = self.convolution(run_shape, blobs[-1], fmaps_end, kernel_size=[1], weight_std=self.weight_filler(run_shape[-1], [1]))
         blobs = blobs + [conv]
@@ -746,7 +798,9 @@ def caffenet(netconf, netmode):
             net.loss = L.SoftmaxWithLoss(last_blob, net.label, ntop=0)
             
     # Return the protocol buffer of the generated network
-    return net.to_proto()
+    protonet = net.to_proto()
+    protonet.name = 'NET_' + 'TEST' if (netmode == caffe_pb2.TEST) else 'TRAIN'
+    return protonet
 
 
 def create_nets(netconf):
