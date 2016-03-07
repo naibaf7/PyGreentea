@@ -246,7 +246,7 @@ class NetworkGenerator:
     # 4. Batchnorm
     # 5. ReLU
     # References: http://torch.ch/blog/2016/02/04/resnets.html, https://github.com/KaimingHe/deep-residual-networks
-    def conv_relu(self, run_shape, bottom, num_output, bridge_in = None, bridge_in_index = -1, bridge_op='add', kernel_size=[3], stride=[1], pad=[0], group=1, weight_std=0.01):
+    def conv_relu(self, run_shape, bottom, num_output, bridge_in = None, bridge_in_index = -1, in_place=True, bridge_op='add', kernel_size=[3], stride=[1], pad=[0], group=1, weight_std=0.01):
         update = RunShapeUpdater()
                 
         conv = L.Convolution(bottom, kernel_size=kernel_size, stride=stride, dilation=run_shape[-1].dilation,
@@ -294,18 +294,18 @@ class NetworkGenerator:
         
         # Dropout
         if (self.netconf.dropout > 0):
-            drop = L.Dropout(last, in_place=True, dropout_ratio=self.netconf.dropout)
+            drop = L.Dropout(last, in_place=in_place, dropout_ratio=self.netconf.dropout)
             last = drop
         
         # Batchnorm
         if (self.netconf.use_batchnorm == True):
-            bnl = L.BatchNorm(last, in_place=True,
+            bnl = L.BatchNorm(last, in_place=in_place,
                               param=[dict(lr_mult=0,decay_mult=0),dict(lr_mult=0,decay_mult=0),dict(lr_mult=0,decay_mult=0)],
                               batch_norm_param=dict(use_global_stats=(self.mode == caffe_pb2.TEST), moving_average_fraction=self.netconf.batchnorm_maf))
             last = bnl
 
         # Activation
-        relu = L.ReLU(last, in_place=True, negative_slope=self.netconf.relu_slope)
+        relu = L.ReLU(last, in_place=in_place, negative_slope=self.netconf.relu_slope)
         last = relu
         
         return conv, last, bridge_out, bridge_out_index
@@ -505,8 +505,13 @@ class NetworkGenerator:
                     
                     convolution_config = unetconf.unet_conv_up[min(unetconf.unet_depth - i - 1, len(unetconf.unet_conv_up) - 1)]
                     for j in range(0,len(convolution_config)):
+                        in_place = True
+                        # In-place computation disabled if the next U-Net is bridged, due to applying Dropout, Batchnorm, ReLU after the MergeCrop
+                        if (j == len(convolution_config)-1 and i == unetconf.unet_depth-1 and len(netconf.u_netconfs) > uidx + 1 and netconf.u_netconfs[uidx + 1].bridge == True):
+                            in_place = False
                         pad =  [convolution_config[j][k] - 1 for k in range(0,len(convolution_config[j]))] if (unetconf.use_deconvolution_uppath) else [0]                       
                         conv, relu, bridge, bridge_index = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j],
+                                                    in_place = in_place,
                                                     bridge_in=(bridge_in if (unetconf.bridge == True and j == len(convolution_config)-1 and i == unetconf.unet_depth-1) else None),
                                                     bridge_in_index=bridge_in_index,
                                                     pad=pad, weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
@@ -797,7 +802,7 @@ def caffenet(netconf, netmode):
             
     # Return the protocol buffer of the generated network
     protonet = net.to_proto()
-    protonet.name = 'NET_' + 'TEST' if (netmode == caffe_pb2.TEST) else 'TRAIN'
+    protonet.name = 'NET_' + ('TEST' if (netmode == caffe_pb2.TEST) else 'TRAIN')
     return protonet
 
 
