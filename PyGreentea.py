@@ -91,23 +91,25 @@ class NetInputWrapper:
         self.shapes = shapes
         self.dummy_slice = np.ascontiguousarray([0]).astype(float32)
         self.inputs = []
-        self.layer_indices = []
+        self.input_keys = ['data', 'label', 'scale', 'components', 'nhood']
+        self.input_layers = []
         
-        layers = net.layers
-        for i in range(0,len(layers)):
-            print (layers[i].type)
-            if (layers[i].type == 'MemoryData'):
-                self.layer_indices += [i]
+        for i in range(0, len(self.input_keys)):
+            if (self.input_keys[i] in self.net.layers):
+                self.input_layers += [self.net.layers[self.input_keys[i]]]
+        
+        print (len(self.input_layers))
         
         for i in range(0,len(shapes)):
             # Pre-allocate arrays that will persist with the network
             self.inputs += [np.zeros(tuple(self.shapes[i]), dtype=float32)]
                 
-                
+        print (len(shapes))
+        
     def setInputs(self, data):      
         for i in range(0,len(self.shapes)):
             np.copyto(self.inputs[i], np.ascontiguousarray(data[i]).astype(float32))
-            self.net.set_input_arrays(self.layer_indices[i], self.inputs[i], self.dummy_slice)
+            self.net.set_layer_input_arrays(self.input_layers[i], self.inputs[i], self.dummy_slice)
                   
 
 # Transfer network weights from one network to another
