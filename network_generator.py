@@ -85,6 +85,8 @@ class NetConf:
     ignore_conv_buffer = False
     # U-Net configurations
     u_netconfs = [UNetConf()]
+    # Activation function before loss (sigmoid, relu, tanh)
+    loss_activation = 'sigmoid'
 
 
 
@@ -547,6 +549,16 @@ class NetworkGenerator:
         # Return the last blob of the network (goes to error objective)
         return blobs, run_shape
     
+    def implement_loss_activation(self, blob, in_place):
+        loss_blob = None
+        if (self.netconf.loss_activation == 'sigmoid'):
+            loss_blob = L.Sigmoid(blob, ntop=1, in_place=in_place)
+        elif (self.netconf.loss_activation == 'relu'):
+            loss_blob = L.ReLU(blob, ntop=1, in_place=in_place, negative_slope=self.netconf.relu_slope)
+        else:
+            loss_blob = None
+        return loss_blob        
+    
     
 def compute_valid_io_shapes(netconf, netmode, min_output_shape, max_output_shape, fmaps_in=1, fmaps_out=1, constraints=None):
     
@@ -703,7 +715,6 @@ def compute_valid_io_shapes(netconf, netmode, min_output_shape, max_output_shape
         print("Current shape: %s, %s, %s" % (shape_idx, valid_in_shapes[shape_idx], upper_limit))
         
     return valid_in_shapes, valid_out_shapes, max_fmap_counts
-    
 
 
 def caffenet(netconf, netmode):
@@ -735,10 +746,10 @@ def caffenet(netconf, netmode):
 
         # Implement the prediction layer
         if netconf.loss_function == 'malis':
-            net.prob = L.Sigmoid(last_blob, ntop=1)
+            net.prob = netgen.implement_loss_activation(last_blob, False)
         
         if netconf.loss_function == 'euclid':
-            net.prob = L.Sigmoid(last_blob, ntop=1)
+            net.prob = netgen.implement_loss_activation(last_blob, False)
             
         if netconf.loss_function == 'softmax':
             net.prob = L.Softmax(last_blob, ntop=1)
@@ -790,11 +801,11 @@ def caffenet(netconf, netmode):
         
         # Implement the loss
         if netconf.loss_function == 'malis':       
-            last_blob = L.Sigmoid(last_blob, in_place=True)
+            last_blob = netgen.implement_loss_activation(last_blob, True)
             net.loss = L.MalisLoss(last_blob, net.label, net.components, net.nhood, ntop=0)
         
         if netconf.loss_function == 'euclid':
-            last_blob = L.Sigmoid(last_blob, in_place=True)
+            last_blob = netgen.implement_loss_activation(last_blob, True)
             net.loss = L.EuclideanLoss(last_blob, net.label, net.scale, ntop=0)
             
         if netconf.loss_function == 'softmax':
