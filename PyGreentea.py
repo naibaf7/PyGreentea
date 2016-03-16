@@ -515,7 +515,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
         
-        if (options.test_net != None and i % options.test_interval == 0):
+        if (options.test_net != None and i % options.test_interval == 1):
             test_eval.evaluate(i)
         
         # First pick the dataset to train with
