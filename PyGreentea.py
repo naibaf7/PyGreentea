@@ -95,8 +95,8 @@ class NetInputWrapper:
         self.input_layers = []
         
         for i in range(0, len(self.input_keys)):
-            if (self.input_keys[i] in self.net.layers):
-                self.input_layers += [self.net.layers[self.input_keys[i]]]
+            if (self.input_keys[i] in self.net.layers_dict):
+                self.input_layers += [self.net.layers_dict[self.input_keys[i]]]
         
         print (len(self.input_layers))
         
