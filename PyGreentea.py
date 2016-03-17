@@ -10,6 +10,8 @@ import numpy.random
 
 
 # Determine where PyGreentea is
+from data_queue import DatasetQueue, data_queue_should_be_used_with
+
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
 
 # Determine where PyGreentea gets called from
@@ -511,37 +513,77 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         shapes += [[1,1] + list(np.shape(data_arrays[0]['nhood']))]
 
     net_io = NetInputWrapper(net, shapes)
-    
+
+    if data_queue_should_be_used_with(data_arrays):
+        using_asynchronous_queue = True
+        # and initialize queue!
+        queue_size = 5
+        n_workers = 3
+        training_data_queue = DatasetQueue(
+            size=queue_size,
+            datasets=data_arrays,
+            input_shape=tuple(input_dims),
+            output_shape=tuple(output_dims),
+            n_workers=n_workers
+        )
+        # start populating the queue
+        for i in range(queue_size):
+            which_dataset = randint(0, len(data_arrays) - 1)
+            offsets = []
+            for j in range(0, dims):
+                offsets.append(randint(0, data_arrays[0]['data'].shape[j] - (output_dims[j] + input_padding[j])))
+            offsets = tuple([int(x) for x in offsets])
+            # print("offsets = ", offsets)
+            shared_dataset_index, async_result = \
+                training_data_queue.start_refreshing_shared_dataset(i, offsets, which_dataset)
+            # final_result = async_result.get()
+            # if final_result is not None:
+            #     # probably an error...
+            #     print(final_result)
+    else:
+        using_asynchronous_queue = False
+
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
         
         if (options.test_net != None and i % options.test_interval == 1):
             test_eval.evaluate(i)
-        
-        # First pick the dataset to train with
-        dataset = randint(0, len(data_arrays) - 1)
 
-        offsets = []
-        for j in range(0, dims):
-            offsets.append(randint(0, data_arrays[dataset]['data'].shape[1+j] - (output_dims[j] + input_padding[j])))
-                
-        # These are the raw data elements
-        data_slice = slice_data(data_arrays[dataset]['data'], [0]+offsets, [fmaps_in]+[output_dims[di] + input_padding[di] for di in range(0, dims)])
-        label_slice = slice_data(data_arrays[dataset]['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
 
-        # transform the input
-        # this code assumes that the original input pixel values are scaled between (0,1)
-        if 'transform' in data_arrays[dataset]:
-            # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
-            lo, hi = data_arrays[dataset]['transform']['scale']
-            data_slice = 0.5 + (data_slice-0.5)*np.random.uniform(low=lo,high=hi)
-            lo, hi = data_arrays[dataset]['transform']['shift']
-            data_slice = data_slice + np.random.uniform(low=lo,high=hi)
-            # print('Post:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+        if not using_asynchronous_queue:
+            print("Using data_arrays directly. No queue.")
+            # First pick the dataset_index to train with
+            dataset_index = randint(0, len(data_arrays) - 1)
+            dataset = data_arrays[dataset_index]
+            offsets = []
+            for j in range(0, dims):
+                offsets.append(randint(0, dataset['data'].shape[1 + j] - (output_dims[j] + input_padding[j])))
+            # These are the raw data elements
+            data_slice = slice_data(dataset['data'], [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
+            label_slice = slice_data(dataset['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
+            # transform the input
+            # this code assumes that the original input pixel values are scaled between (0,1)
+            if 'transform' in dataset:
+                # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+                lo, hi = dataset['transform']['scale']
+                data_slice = 0.5 + (data_slice-0.5)*np.random.uniform(low=lo,high=hi)
+                lo, hi = dataset['transform']['shift']
+                data_slice = data_slice + np.random.uniform(low=lo,high=hi)
+                # print('Post:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+        else:
+            print("Making queue from data_arrays.")
+            dataset, index_of_shared_dataset = training_data_queue.get_dataset()
+            data_slice = dataset['data']
+            assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
+            label_slice = dataset['label']
+            assert label_slice.shape == (fmaps_out,) + tuple(output_dims)
+            print("Using next dataset in queue, which has offset {o}". format(o=dataset['offset']))
 
+        print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, data_slice.max() {}"
+              .format(data_slice.min(), data_slice.mean(), data_slice.max()))
 
         if options.loss_function == 'malis':
-            components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), data_arrays[dataset]['nhood'])
+            components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
             # Also recomputing the corresponding labels (connected components)
             net_io.setInputs([data_slice, label_slice, components_slice, data_arrays[0]['nhood']])
             
@@ -563,7 +605,26 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         # Single step
         loss = solver.step(1)
         # sanity_check_net_blobs(net)
-        
+
+        if using_asynchronous_queue:
+            new_dataset_index = randint(0, len(data_arrays) - 1)
+            full_3d_shape_of_new_dataset = data_arrays[new_dataset_index]['data'].shape[-3:]
+            offsets = tuple([
+                int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
+                for j in range(dims)
+                ])
+            # for j in range(0, dims):
+            #     offsets.append(randint(0, dataset['data'].shape[1 + j] - (output_dims[j] + input_padding[j])))
+            # offsets = tuple(offsets)
+            # offsets = (0,0,0)
+            print("refreshing shared dataset #{i} with dataset #{j} with offset {o}"
+                  .format(i=index_of_shared_dataset, j=new_dataset_index, o=offsets))
+            training_data_queue.start_refreshing_shared_dataset(
+                shared_dataset_index=index_of_shared_dataset,
+                offset=offsets,
+                dataset_index=new_dataset_index
+            )
+
         while gc.collect():
             pass
 
