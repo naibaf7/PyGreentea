@@ -59,4 +59,4 @@ target/
 # Custom
 .project
 .pydevproject
-
+.idea
