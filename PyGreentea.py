@@ -7,6 +7,7 @@ import threading
 import png
 from Crypto.Random.random import randint
 import numpy.random
+import time
 
 
 # Determine where PyGreentea is
@@ -544,11 +545,14 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         using_asynchronous_queue = False
 
     # Loop from current iteration to last iteration
+    time_counter = 0
+    total_time = 0
     for i in range(solver.iter, solver.max_iter):
         
         if (options.test_net != None and i % options.test_interval == 1):
             test_eval.evaluate(i)
 
+        start = time.time()
 
         if not using_asynchronous_queue:
             print("Using data_arrays directly. No queue.")
@@ -638,4 +642,9 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
         if hasattr(options, 'loss_snapshot') and ((i % options.loss_snapshot) == 0):
             io.savemat('loss.mat',{'loss':losses})
+
+        time_counter += 1
+        total_time += time.time() - start
+        print("taking {} on average per iteration".format(total_time/time_counter))
+
 
