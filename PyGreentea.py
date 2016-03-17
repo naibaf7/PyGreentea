@@ -9,6 +9,8 @@ from Crypto.Random.random import randint
 import numpy.random
 import time
 
+# set this to True after importing this module to prevent multithreading
+USE_ONE_THREAD = False
 
 # Determine where PyGreentea is
 from data_queue import DatasetQueue, data_queue_should_be_used_with
@@ -458,9 +460,12 @@ class TestNetEvaluator:
         # Weight transfer
         net_weight_transfer(self.test_net, self.train_net)
         # Run test
-        self.thread = threading.Thread(target=self.run_test, args=[iteration])
-        self.thread.start()
-                
+        if USE_ONE_THREAD:
+            self.run_test(iteration)
+        else:
+            self.thread = threading.Thread(target=self.run_test, args=[iteration])
+            self.thread.start()
+
 
 def init_solver(solver_config, options):
     caffe.set_mode_gpu()
@@ -551,6 +556,9 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         
         if (options.test_net != None and i % options.test_interval == 1):
             test_eval.evaluate(i)
+            if USE_ONE_THREAD:
+                # after testing finishes, switch back to the training device
+                caffe.select_device(options.train_device, False)
 
         start = time.time()
 
