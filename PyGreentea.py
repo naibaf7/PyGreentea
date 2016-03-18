@@ -9,12 +9,11 @@ from Crypto.Random.random import randint
 import numpy.random
 import time
 
+
 # set this to True after importing this module to prevent multithreading
 USE_ONE_THREAD = False
 
 # Determine where PyGreentea is
-from data_queue import DatasetQueue, data_queue_should_be_used_with
-
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
 
 # Determine where PyGreentea gets called from
@@ -73,7 +72,8 @@ if __name__ == "__main__":
     
     print(bcolors.OKGREEN + ("==== PYGT: Setup finished ====").ljust(80,"=") + bcolors.ENDC)
     sys.exit(0)
-
+else: 
+    import data_queue
 
 setup.setup_paths(config.caffe_path, config.malis_path)
 setup.set_environment_vars()
@@ -520,12 +520,12 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
     net_io = NetInputWrapper(net, shapes)
 
-    if data_queue_should_be_used_with(data_arrays):
+    if data_queue.data_queue_should_be_used_with(data_arrays):
         using_asynchronous_queue = True
         # and initialize queue!
         queue_size = 5
         n_workers = 3
-        training_data_queue = DatasetQueue(
+        training_data_queue = data_queue.DatasetQueue(
             size=queue_size,
             datasets=data_arrays,
             input_shape=tuple(input_dims),
