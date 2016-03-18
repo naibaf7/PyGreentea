@@ -20,7 +20,7 @@ import PyGreentea as pygt
 '''
 
 
-def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, output_slice):
+def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, output_slice, transform=True):
     # print("in process id {}".format(os.getpid()))
     shared_dataset = shared_datasets[index_of_shared]
     original_dataset = datasets[index_of_which_dataset]
@@ -33,13 +33,15 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
     # load inputs
     # print("original_dataset['data']: ", original_dataset['data'].shape, original_dataset['data'].dtype)
     data_slice = np.array(original_dataset['data'][input_slice], dtype=np.float32) / (2. ** 8)
-    #todo: implement transforms. see if this works.
-    if 'transform' in original_dataset:
-        # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
-        lo, hi = original_dataset['transform']['scale']
-        data_slice = 0.5 + (data_slice-0.5)*np.random.uniform(low=lo,high=hi)
-        lo, hi = original_dataset['transform']['shift']
-        data_slice = data_slice + np.random.uniform(low=lo,high=hi)
+    if transform:
+        if 'transform' in original_dataset:
+            # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+            lo, hi = original_dataset['transform']['scale']
+            data_slice = 0.5 + (data_slice-0.5)*np.random.uniform(low=lo,high=hi)
+            lo, hi = original_dataset['transform']['shift']
+            data_slice = data_slice + np.random.uniform(low=lo,high=hi)
+        else:
+            print("WARNING: source data doesn't have 'transform' attribute.")
     dataset_numpy['data'] = data_slice
     # load outputs if desired
     if output_slice is not None:
@@ -58,6 +60,7 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
 
 class DatasetQueue(object):
     def __init__(self, size, datasets, input_shape, output_shape=None, n_workers=1):
+        self.size = size
         self.datasets = datasets
         self.input_shape = input_shape
         self.outputs_are_ignored = output_shape is None
@@ -106,9 +109,6 @@ class DatasetQueue(object):
         global datasets
         datasets = self.datasets
 
-    def __len__(self):
-        return len(self.datasets)
-
     def get_dataset(self, copy=False):
         while len(self.ready_shared_datasets) < 1:
             print('\n', 'waiting for an available shared dataset', '\n')
@@ -145,15 +145,15 @@ class DatasetQueue(object):
                 new_dataset[key] = given_dataset[key]
         return new_dataset, index_of_shared_dataset
 
-    def start_refreshing_shared_dataset(self, shared_dataset_index, offset, dataset_index, wait=False):
-        # print(offset)
-        output_slice = None
-        if self.output_shape:
+    def start_refreshing_shared_dataset(self, shared_dataset_index, offset, dataset_index, transform=True, wait=False):
+        if self.outputs_are_ignored:
+            output_slice = None
+        else:
             borders = tuple([(in_ - out_) / 2 for (in_, out_) in zip(self.input_shape, self.output_shape)])
             # print("borders: ", borders)
             output_slice = tuple([slice(offset[i] + borders[i], offset[i] + borders[i] + self.output_shape[i])
                             for i in range(len(offset))])
-            # print("output_slice: {}".format(output_slice))
+        # print("output_slice: {}".format(output_slice))
         input_slice = tuple([slice(offset[i], offset[i] + self.input_shape[i])
                        for i in range(len(offset))])
         # print("input_slice: {}".format(input_slice))
@@ -168,7 +168,8 @@ class DatasetQueue(object):
                 index_of_shared=shared_dataset_index,
                 index_of_which_dataset=dataset_index,
                 input_slice=input_slice,
-                output_slice=output_slice
+                output_slice=output_slice,
+                transform=transform
             ),
             callback=pool_callback
         )

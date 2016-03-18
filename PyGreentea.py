@@ -372,7 +372,18 @@ def process(net, data_arrays, shapes=None, net_io=None):
             
     dst = net.blobs['prob']
     dummy_slice = [0]
-    
+
+    using_queue = data_queue.data_queue_should_be_used_with(data_arrays)
+    dataset_offsets_to_process = dict()
+    if using_queue:
+        processing_data_queue = data_queue.DatasetQueue(
+            size=5,
+            datasets=data_arrays,
+            input_shape=tuple(input_dims),
+            output_shape=None,  # ignore labels
+            n_workers=3
+        )
+
     pred_arrays = []
     for i in range(0, len(data_arrays)):
         data_array = data_arrays[i]['data']
@@ -385,20 +396,30 @@ def process(net, data_arrays, shapes=None, net_io=None):
             offsets += [0]
             in_dims += [data_array.shape[data_dims-dims+d]]
             out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
-            
-        pred_array = np.zeros(tuple([fmaps_out] + out_dims))
-                
+
+        if not using_queue:
+            pred_array = np.zeros(tuple([fmaps_out] + out_dims))
+
+        list_of_offsets_to_process = []
+
         while(True):
-            data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
-            net_io.setInputs([data_slice])
-            net.forward()
-            output = dst.data[0].copy()
-            
-            print offsets
-            print output.mean()
-            
-            set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
-            
+            # print("In while loop. offsets = {o}".format(o=offsets))
+            if using_queue:
+                # print("Appending offsets value {o}".format(o=offsets))
+                offsets_to_append = list(offsets)  # make a copy. important!
+                list_of_offsets_to_process.append(offsets_to_append)
+                # print("Just appended. list_of_offsets_to_process is now ",list_of_offsets_to_process)
+            else:
+                # process the old-fashioned way
+                print("Processing offsets ", offsets)
+                data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
+                net_io.setInputs([data_slice])
+                net.forward()
+                output = dst.data[0].copy()
+                print offsets
+                print output.mean()
+                set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
+
             incremented = False
             for d in range(0, dims):
                 if (offsets[dims - 1 - d] == out_dims[dims - 1 - d] - output_dims[dims - 1 - d]):
@@ -409,11 +430,69 @@ def process(net, data_arrays, shapes=None, net_io=None):
                     offsets[dims - 1 - d] = min(offsets[dims - 1 - d] + output_dims[dims - 1 - d], out_dims[dims - 1 - d] - output_dims[dims - 1 - d])
                     incremented = True
                     break
-            
+
             # Processed the whole input block
             if not incremented:
                 break
-            
+
+        if using_queue:
+            dataset_offsets_to_process[i] = list_of_offsets_to_process
+        else:
+            pred_arrays += [pred_array]
+
+    if using_queue:
+        for source_dataset_index in dataset_offsets_to_process:
+            print("source_dataset_index = ",source_dataset_index)
+            list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
+            print("Processing source volume #{i} with offsets list {o}"
+                  .format(i=source_dataset_index, o=list_of_offsets_to_process))
+            # make a copy of that list for enqueueing purposes
+            offsets_to_enqueue = list(list_of_offsets_to_process)
+            data_array = data_arrays[source_dataset_index]['data']
+            data_dims = len(data_array.shape)
+            in_dims = []
+            out_dims = []
+            for d in range(0, dims):
+                in_dims += [data_array.shape[data_dims-dims+d]]
+                out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
+            pred_array = np.zeros(tuple([fmaps_out] + out_dims))
+            # start pre-populating queue
+            for shared_dataset_index in range(min(processing_data_queue.size, len(list_of_offsets_to_process))):
+                # fill shared-memory datasets with an offset
+                offsets = offsets_to_enqueue.pop(0)
+                offsets = tuple([int(o) for o in offsets])
+                # print("Pre-populating processing queue with data at offset {}".format(offsets))
+                shared_dataset_index, async_result = processing_data_queue.start_refreshing_shared_dataset(
+                    shared_dataset_index,
+                    offsets,
+                    source_dataset_index,
+                    transform=False
+                )
+                # print(async_result.get())
+
+            # process each offset
+            for i_offsets in range(len(list_of_offsets_to_process)):
+                dataset, index_of_shared_dataset = processing_data_queue.get_dataset()
+                data_slice = dataset['data']
+                assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
+                print("Processing next dataset in processing queue, which has offset {o}". format(o=dataset['offset']))
+                # process the chunk
+                net_io.setInputs([data_slice])
+                net.forward()
+                output = dst.data[0].copy()
+                offsets_of_this_batch = list(dataset['offset'])  # convert tuple to list
+                print offsets_of_this_batch
+                print output.mean()
+                set_slice_data(pred_array, output, [0] + offsets_of_this_batch, [fmaps_out] + output_dims)
+                if len(offsets_to_enqueue) > 0:
+                    # start adding the next slice to the queue with index_of_shared_dataset
+                    new_offsets = offsets_to_enqueue.pop(0)
+                    processing_data_queue.start_refreshing_shared_dataset(
+                        index_of_shared_dataset,
+                        new_offsets,
+                        source_dataset_index,
+                        transform=False
+                    )
         pred_arrays += [pred_array]
             
     return pred_arrays
@@ -448,6 +527,7 @@ class TestNetEvaluator:
             outdset = outhdf5.create_dataset('main', pred_arrays[i].shape, np.float32, data=pred_arrays[i])
             # outdset.attrs['nhood'] = np.string_('-1,0,0;0,-1,0;0,0,-1')
             outhdf5.close()
+            print("Just saved {}".format(h5file))
         
 
     def evaluate(self, iteration):
@@ -583,13 +663,12 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 data_slice = data_slice + np.random.uniform(low=lo,high=hi)
                 # print('Post:',(data_slice.min(),data_slice.mean(),data_slice.max()))
         else:
-            print("Making queue from data_arrays.")
             dataset, index_of_shared_dataset = training_data_queue.get_dataset()
             data_slice = dataset['data']
             assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
             label_slice = dataset['label']
             assert label_slice.shape == (fmaps_out,) + tuple(output_dims)
-            print("Using next dataset in queue, which has offset {o}". format(o=dataset['offset']))
+            print("Training with next dataset in queue, which has offset {o}". format(o=dataset['offset']))
 
         print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, data_slice.max() {}"
               .format(data_slice.min(), data_slice.mean(), data_slice.max()))
@@ -629,8 +708,8 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             #     offsets.append(randint(0, dataset['data'].shape[1 + j] - (output_dims[j] + input_padding[j])))
             # offsets = tuple(offsets)
             # offsets = (0,0,0)
-            print("refreshing shared dataset #{i} with dataset #{j} with offset {o}"
-                  .format(i=index_of_shared_dataset, j=new_dataset_index, o=offsets))
+            # print("refreshing shared dataset #{i} with dataset #{j} with offset {o}"
+            #       .format(i=index_of_shared_dataset, j=new_dataset_index, o=offsets))
             training_data_queue.start_refreshing_shared_dataset(
                 shared_dataset_index=index_of_shared_dataset,
                 offset=offsets,
