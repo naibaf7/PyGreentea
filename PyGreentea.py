@@ -493,7 +493,7 @@ def process(net, data_arrays, shapes=None, net_io=None):
                         source_dataset_index,
                         transform=False
                     )
-        pred_arrays += [pred_array]
+            pred_arrays += [pred_array]
             
     return pred_arrays
       
