@@ -28,9 +28,6 @@ from numpy import float32, int32, uint8
 # Load the configuration file
 import config
 
-# Load the setup module
-import setup
-
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -43,6 +40,9 @@ class bcolors:
 
 # Direct call to PyGreentea, set up everything
 if __name__ == "__main__":
+    # Load the setup module
+    import setup
+
     if (pygtpath != cmdpath):
         os.chdir(pygtpath)
     
@@ -75,10 +75,11 @@ if __name__ == "__main__":
 else: 
     import data_queue
 
-setup.setup_paths(config.caffe_path, config.malis_path)
-setup.set_environment_vars()
 
 # Import Caffe
+caffe_parent_path = os.path.dirname(os.path.dirname(__file__))
+caffe_path = os.path.join(caffe_parent_path, 'caffe_gt', 'python')
+sys.path.append(caffe_path)
 import caffe as caffe
 
 # Import the network generator
@@ -155,7 +156,7 @@ def getCaffeModels(prefix):
         if(prefix+'_iter_' in file and '.caffemodel' in file):
             caffemodels += [(int(file[len(prefix+'_iter_'):-len('.caffemodel')]),file)]
     return sorted(caffemodels)
-            
+
 
 def error_scale(data, factor_low, factor_high):
     scale = np.add((data >= 0.5) * factor_high, (data < 0.5) * factor_low)
