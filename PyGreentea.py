@@ -670,6 +670,9 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             label_slice = dataset['label']
             assert label_slice.shape == (fmaps_out,) + tuple(output_dims)
             print("Training with next dataset in queue, which has offset {o}". format(o=dataset['offset']))
+            mask_slice = None
+            if 'mask' in dataset:
+                mask_slice = dataset['mask']
 
         print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, data_slice.max() {}"
               .format(data_slice.min(), data_slice.mean(), data_slice.max()))
@@ -688,7 +691,13 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 w_pos = 1
                 w_neg = 1          
             
-            net_io.setInputs([data_slice, label_slice, error_scale(label_slice,w_neg,w_pos)])
+            error_scale_slice = error_scale(label_slice,w_neg,w_pos)
+            if mask_slice:
+                if mask_slice.shape == error_scale_slice.shape:
+                    error_scale_slice = np.multiply(error_scale_slice, mask_slice)
+                else:
+                    raise Warning("you provided a mask, but it's not the same shape as the labels.")
+            net_io.setInputs([data_slice, label_slice, error_scale_slice])
 
         if options.loss_function == 'softmax':
             # These are the affinity edge values
