@@ -50,7 +50,8 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
     for key in shared_dataset:
         source_array = dataset_numpy[key]
         target_mp_array = shared_dataset[key].get_obj()
-        # print("dataset_numpy['{0}']: dtype {1} and shape {2}".format(key, source_array.dtype, source_array.shape))
+        if pygt.DEBUG:
+            print("dataset_numpy['{0}']: dtype {1} and shape {2}".format(key, source_array.dtype, source_array.shape))
         # print("dataset_numpy['{0}'].flatten().size: {1}".format(key, source_array.flatten().size))
         # print(dir(target_mp_array))
         # print(target_mp_array._length_, target_mp_array._objects, target_mp_array._type_, target_mp_array._b_base_)
@@ -86,7 +87,8 @@ class DatasetQueue(object):
         sizes = dict()
         for key, shape in self.shapes.iteritems():
             sizes[key] = reduce(mul, shape)
-        # print("sizes: ", sizes)
+        if pygt.DEBUG:
+            print("sizes: ", sizes)
         self.shared_datasets = []
         for n in range(size):
             shared_dataset = dict()
@@ -129,8 +131,8 @@ class DatasetQueue(object):
             else:
                 dtype = np.int32
             new_dataset[key] = np.frombuffer(shared_dataset[key].get_obj(), dtype)
-            # print(new_dataset[key].shape)
-            # print(self.shapes[key])
+            if pygt.DEBUG:
+                print(key, new_dataset[key].shape, self.shapes[key])
             new_dataset[key] = new_dataset[key].reshape(self.shapes[key])
             if copy:
                 new_dataset[key] = new_dataset[key].copy()
@@ -173,7 +175,7 @@ class DatasetQueue(object):
             ),
             callback=pool_callback
         )
-        if wait:
+        if wait or pygt.DEBUG:
             final_result = async_result.get()
             if final_result is not None:
                 # probably an error

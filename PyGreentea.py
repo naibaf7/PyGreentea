@@ -13,6 +13,8 @@ import time
 # set this to True after importing this module to prevent multithreading
 USE_ONE_THREAD = False
 
+DEBUG = False
+
 # Determine where PyGreentea is
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
 
@@ -390,7 +392,7 @@ def process(net, data_arrays, shapes=None, net_io=None):
         data_array = data_arrays[i]['data']
         data_dims = len(data_array.shape)
         
-        offsets = []        
+        offsets = []
         in_dims = []
         out_dims = []
         for d in range(0, dims):
@@ -412,7 +414,8 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 # print("Just appended. list_of_offsets_to_process is now ",list_of_offsets_to_process)
             else:
                 # process the old-fashioned way
-                print("Processing offsets ", offsets)
+                if DEBUG:
+                    print("Processing offsets ", offsets)
                 data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
                 net_io.setInputs([data_slice])
                 net.forward()
@@ -443,10 +446,11 @@ def process(net, data_arrays, shapes=None, net_io=None):
 
     if using_queue:
         for source_dataset_index in dataset_offsets_to_process:
-            print("source_dataset_index = ",source_dataset_index)
             list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
-            print("Processing source volume #{i} with offsets list {o}"
-                  .format(i=source_dataset_index, o=list_of_offsets_to_process))
+            if DEBUG:
+                print("source_dataset_index = ",source_dataset_index)
+                print("Processing source volume #{i} with offsets list {o}"
+                      .format(i=source_dataset_index, o=list_of_offsets_to_process))
             # make a copy of that list for enqueueing purposes
             offsets_to_enqueue = list(list_of_offsets_to_process)
             data_array = data_arrays[source_dataset_index]['data']
@@ -476,7 +480,8 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 dataset, index_of_shared_dataset = processing_data_queue.get_dataset()
                 data_slice = dataset['data']
                 assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
-                print("Processing next dataset in processing queue, which has offset {o}". format(o=dataset['offset']))
+                if DEBUG:
+                    print("Processing next dataset in processing queue, which has offset {o}". format(o=dataset['offset']))
                 # process the chunk
                 net_io.setInputs([data_slice])
                 net.forward()
@@ -606,13 +611,15 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         # and initialize queue!
         queue_size = 5
         n_workers = 3
-        training_data_queue = data_queue.DatasetQueue(
+        queue_initialization_kwargs = dict(
             size=queue_size,
             datasets=data_arrays,
             input_shape=tuple(input_dims),
             output_shape=tuple(output_dims),
             n_workers=n_workers
         )
+        print("creating queue with kwargs {}".format(queue_initialization_kwargs))
+        training_data_queue = data_queue.DatasetQueue(**queue_initialization_kwargs)
         # start populating the queue
         for i in range(queue_size):
             which_dataset = randint(0, len(data_arrays) - 1)
@@ -669,13 +676,15 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
             label_slice = dataset['label']
             assert label_slice.shape == (fmaps_out,) + tuple(output_dims)
-            print("Training with next dataset in queue, which has offset {o}". format(o=dataset['offset']))
+            if DEBUG:
+                print("Training with next dataset in queue, which has offset {o}". format(o=dataset['offset']))
             mask_slice = None
             if 'mask' in dataset:
                 mask_slice = dataset['mask']
 
-        print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, data_slice.max() {}"
-              .format(data_slice.min(), data_slice.mean(), data_slice.max()))
+        if DEBUG:
+            print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, "
+                  "data_slice.max() {}".format(data_slice.min(), data_slice.mean(), data_slice.max()))
 
         if options.loss_function == 'malis':
             components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
@@ -692,11 +701,6 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 w_neg = 1          
             
             error_scale_slice = error_scale(label_slice,w_neg,w_pos)
-            if mask_slice:
-                if mask_slice.shape == error_scale_slice.shape:
-                    error_scale_slice = np.multiply(error_scale_slice, mask_slice)
-                else:
-                    raise Warning("you provided a mask, but it's not the same shape as the labels.")
             net_io.setInputs([data_slice, label_slice, error_scale_slice])
 
         if options.loss_function == 'softmax':
@@ -742,6 +746,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
         time_counter += 1
         total_time += time.time() - start
-        print("taking {} on average per iteration".format(total_time/time_counter))
+        if DEBUG:
+            print("taking {} on average per iteration".format(total_time/time_counter))
 
 
