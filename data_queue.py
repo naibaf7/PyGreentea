@@ -48,7 +48,8 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
     if output_slice is not None:
         dataset_numpy['components'] = np.array(original_dataset['components'][output_slice])
         if 'label' in original_dataset:
-            dataset_numpy['label'] = np.array(original_dataset['label'][output_slice])
+            label_slice = (slice(None),) + output_slice
+            dataset_numpy['label'] = np.array(original_dataset['label'][label_slice])
         else:
             # compute affinities from components
             dataset_numpy['label'] = pygt.malis.seg_to_affgraph(dataset_numpy['components'], original_dataset['nhood'])
