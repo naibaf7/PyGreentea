@@ -709,7 +709,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             
             if 'mask' in dataset:
                 label_slice = label_slice * mask_slice
-                error_scale = error_scale * mask_slice
+                error_scale_slice = error_scale_slice * mask_slice
             net_io.setInputs([data_slice, label_slice, error_scale_slice])
 
         if options.loss_function == 'softmax':
