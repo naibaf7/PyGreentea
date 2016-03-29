@@ -160,9 +160,9 @@ def getCaffeModels(prefix):
     return sorted(caffemodels)
 
 
-def error_scale(data, factor_low, factor_high):
-    scale = np.add((data >= 0.5) * factor_high, (data < 0.5) * factor_low)
-    return scale
+def scale_errors(data, factor_low, factor_high):
+    scaled_data = np.add((data >= 0.5) * factor_high, (data < 0.5) * factor_low)
+    return scaled_data
 
 
 def count_affinity(dataset):
@@ -705,7 +705,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 w_pos = 1
                 w_neg = 1          
             
-            error_scale_slice = error_scale(label_slice,w_neg,w_pos)
+            error_scale_slice = scale_errors(label_slice, w_neg, w_pos)
             
             if 'mask' in dataset:
                 label_slice = label_slice * mask_slice
