@@ -609,8 +609,12 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     if data_queue.data_queue_should_be_used_with(data_arrays):
         using_asynchronous_queue = True
         # and initialize queue!
-        queue_size = 5
-        n_workers = 3
+        if DEBUG:
+            queue_size = 1
+            n_workers = 1
+        else:
+            queue_size = 5
+            n_workers = 5
         queue_initialization_kwargs = dict(
             size=queue_size,
             datasets=data_arrays,
