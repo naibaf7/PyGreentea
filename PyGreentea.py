@@ -719,8 +719,15 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         loss = solver.step(1)
         # sanity_check_net_blobs(net)
 
+        # def make_offset_for_dataset(source_dataset_index):
+        #     full_3d_shape_of_new_dataset = data_arrays[source_dataset_index]['data'].shape[-3:]
+        #     offsets = tuple([int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
+        #                      for j in range(dims)])
+        #     return offsets
+
         if using_asynchronous_queue:
             new_dataset_index = randint(0, len(data_arrays) - 1)
+            # offsets = make_offset_for_dataset(new_dataset_index)
             full_3d_shape_of_new_dataset = data_arrays[new_dataset_index]['data'].shape[-3:]
             offsets = tuple([
                 int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
