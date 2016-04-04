@@ -702,12 +702,14 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             net_io.setInputs([data_slice, label_slice, components_slice, data_arrays[0]['nhood']])
             
         if options.loss_function == 'euclid':
+            label_slice_mean = label_slice.mean()
             if 'mask' in dataset:
                 label_slice = label_slice * mask_slice
+                label_slice_mean = label_slice.mean() / mask_slice.mean()
             w_pos = 1.0
             w_neg = 1.0
             if options.scale_error:
-                frac_pos = np.clip(label_slice.mean(), 0.05, 0.95)
+                frac_pos = np.clip(label_slice_mean, 0.05, 0.95)
                 w_pos = w_pos / (2.0 * frac_pos)
                 w_neg = w_neg / (2.0 * (1.0 - frac_pos))
             error_scale_slice = scale_errors(label_slice, w_neg, w_pos)
