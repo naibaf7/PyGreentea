@@ -62,7 +62,7 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
             warnings.warn("No mask provided. Setting to 1 everywhere.", UserWarning)
     for key in shared_dataset:
         source_array = dataset_numpy[key].astype(dtypes[key])
-        target_mp_array = shared_dataset[key].get_obj()
+        target_mp_array = shared_dataset[key]
         if pygt.DEBUG:
             print("dataset_numpy['{0}']: dtype {1} and shape {2}".format(key, source_array.dtype, source_array.shape))
         # print("dataset_numpy['{0}'].flatten().size: {1}".format(key, source_array.flatten().size))
@@ -114,7 +114,7 @@ class DatasetQueue(object):
                 if pygt.DEBUG:
                     print("creating {key}'s multiprocessing.Array with "
                           "ctype {c} and size {s}".format(key=key, c=ctype, s=size))
-                shared_dataset[key] = multiprocessing.Array(ctype, size, lock=True)
+                shared_dataset[key] = multiprocessing.Array(ctype, size, lock=False)
             self.shared_datasets.append(shared_dataset)
         self.pool = multiprocessing.Pool(
             processes=n_workers,
@@ -153,7 +153,7 @@ class DatasetQueue(object):
             # else:
             #     dtype = np.int32
             dtype = self.dtypes[key]
-            new_dataset[key] = np.frombuffer(shared_dataset[key].get_obj(), dtype)
+            new_dataset[key] = np.frombuffer(shared_dataset[key], dtype)
             if pygt.DEBUG:
                 print(key, new_dataset[key].shape, self.shapes[key])
             new_dataset[key] = new_dataset[key].reshape(self.shapes[key])

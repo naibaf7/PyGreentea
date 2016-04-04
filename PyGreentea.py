@@ -476,7 +476,10 @@ def process(net, data_arrays, shapes=None, net_io=None):
                     source_dataset_index,
                     transform=False
                 )
-                # print(async_result.get())
+                final_result = async_result.get()
+                if final_result is not None:
+                    # probably an error...
+                    print(final_result)                
 
             # process each offset
             for i_offsets in range(len(list_of_offsets_to_process)):
@@ -637,10 +640,10 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             # print("offsets = ", offsets)
             shared_dataset_index, async_result = \
                 training_data_queue.start_refreshing_shared_dataset(i, offsets, which_dataset)
-            # final_result = async_result.get()
-            # if final_result is not None:
-            #     # probably an error...
-            #     print(final_result)
+            final_result = async_result.get()
+            if final_result is not None:
+                # probably an error...
+                print(final_result)
     else:
         using_asynchronous_queue = False
 
