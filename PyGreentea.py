@@ -187,7 +187,10 @@ def augment_data_simple(dataset):
                             continue
 
                         dataset.append({})
-                        dataset[-1]['name'] = dataset[iset]['name']
+                        dataset[-1]['name'] = dataset[iset]['name']+'_x'+str(reflectx)+'_y'+str(reflecty)+'_z'+str(reflectz)+'_xy'+str(swapxy)
+
+
+
                         dataset[-1]['nhood'] = dataset[iset]['nhood']
                         dataset[-1]['data'] = dataset[iset]['data'][:]
                         dataset[-1]['components'] = dataset[iset]['components'][:]
@@ -613,8 +616,8 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             queue_size = 1
             n_workers = 1
         else:
-            queue_size = 5
-            n_workers = 5
+            queue_size = 20
+            n_workers = 10
         queue_initialization_kwargs = dict(
             size=queue_size,
             datasets=data_arrays,
