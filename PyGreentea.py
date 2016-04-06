@@ -470,17 +470,15 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 offsets = offsets_to_enqueue.pop(0)
                 offsets = tuple([int(o) for o in offsets])
                 # print("Pre-populating processing queue with data at offset {}".format(offsets))
+                print("Pre-populating data loader's dataset #{i}/{size}"
+                      .format(i=shared_dataset_index, size=processing_data_queue.size))
                 shared_dataset_index, async_result = processing_data_queue.start_refreshing_shared_dataset(
                     shared_dataset_index,
                     offsets,
                     source_dataset_index,
-                    transform=False
+                    transform=False,
+                    wait=True
                 )
-                final_result = async_result.get()
-                if final_result is not None:
-                    # probably an error...
-                    print(final_result)                
-
             # process each offset
             for i_offsets in range(len(list_of_offsets_to_process)):
                 dataset, index_of_shared_dataset = processing_data_queue.get_dataset()
@@ -638,12 +636,10 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 offsets.append(randint(0, data_arrays[0]['data'].shape[j] - (output_dims[j] + input_padding[j])))
             offsets = tuple([int(x) for x in offsets])
             # print("offsets = ", offsets)
+            print("Pre-populating data loader's dataset #{i}/{size}"
+                  .format(i=i, size=training_data_queue.size))
             shared_dataset_index, async_result = \
-                training_data_queue.start_refreshing_shared_dataset(i, offsets, which_dataset)
-            final_result = async_result.get()
-            if final_result is not None:
-                # probably an error...
-                print(final_result)
+                training_data_queue.start_refreshing_shared_dataset(i, offsets, which_dataset, wait=True)
     else:
         using_asynchronous_queue = False
 
