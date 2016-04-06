@@ -362,6 +362,14 @@ def get_net_output_specs(net):
     return np.shape(net.blobs['prob'].data)
 
 
+def process_input_data(net_io, input_data):
+    net_io.setInputs([input_data])
+    net_io.net.forward()
+    net_outputs = net_io.net.blobs['prob']
+    output = net_outputs.data[0].copy()
+    return output
+
+
 def process(net, data_arrays, shapes=None, net_io=None):    
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
@@ -420,9 +428,7 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 if DEBUG:
                     print("Processing offsets ", offsets)
                 data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
-                net_io.setInputs([data_slice])
-                net.forward()
-                output = dst.data[0].copy()
+                output = process_input_data(net_io, data_slice)
                 print offsets
                 print output.mean()
                 set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
