@@ -198,7 +198,7 @@ class DatasetQueue(object):
             ),
             callback=pool_callback
         )
-        if wait or pygt.DEBUG:
+        if wait:
             final_result = async_result.get()
             if final_result is not None:
                 # probably an error

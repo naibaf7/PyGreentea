@@ -614,8 +614,8 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         using_asynchronous_queue = True
         # and initialize queue!
         if DEBUG:
-            queue_size = 1
-            n_workers = 1
+            queue_size = 3
+            n_workers = 2
         else:
             queue_size = 20
             n_workers = 10
