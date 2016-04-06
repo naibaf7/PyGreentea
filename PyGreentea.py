@@ -370,6 +370,43 @@ def process_input_data(net_io, input_data):
     return output
 
 
+def generate_dataset_offsets_for_processing(net, data_arrays):
+    input_dims, output_dims, input_padding = get_spatial_io_dims(net)
+    dims = len(output_dims)
+    dataset_offsets_to_process = dict()
+    for i in range(0, len(data_arrays)):
+        data_array = data_arrays[i]['data']
+        data_dims = len(data_array.shape)
+        offsets = []
+        in_dims = []
+        out_dims = []
+        for d in range(0, dims):
+            offsets += [0]
+            in_dims += [data_array.shape[data_dims-dims+d]]
+            out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
+        list_of_offsets_to_process = []
+        while True:
+            # print("In while loop. offsets = {o}".format(o=offsets))
+                # print("Appending offsets value {o}".format(o=offsets))
+            offsets_to_append = list(offsets)  # make a copy. important!
+            list_of_offsets_to_process.append(offsets_to_append)
+            incremented = False
+            for d in range(0, dims):
+                if (offsets[dims - 1 - d] == out_dims[dims - 1 - d] - output_dims[dims - 1 - d]):
+                    # Reset direction
+                    offsets[dims - 1 - d] = 0
+                else:
+                    # Increment direction
+                    offsets[dims - 1 - d] = min(offsets[dims - 1 - d] + output_dims[dims - 1 - d], out_dims[dims - 1 - d] - output_dims[dims - 1 - d])
+                    incremented = True
+                    break
+            # Processed the whole input block
+            if not incremented:
+                break
+        dataset_offsets_to_process[i] = list_of_offsets_to_process
+    return dataset_offsets_to_process
+
+
 def process(net, data_arrays, shapes=None, net_io=None):    
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
@@ -388,7 +425,6 @@ def process(net, data_arrays, shapes=None, net_io=None):
     dummy_slice = [0]
 
     using_queue = data_queue.data_queue_should_be_used_with(data_arrays)
-    dataset_offsets_to_process = dict()
     if using_queue:
         processing_data_queue = data_queue.DatasetQueue(
             size=5,
@@ -399,7 +435,8 @@ def process(net, data_arrays, shapes=None, net_io=None):
         )
 
     pred_arrays = []
-    for i in range(0, len(data_arrays)):
+    dataset_offsets_to_process = generate_dataset_offsets_for_processing(net, data_arrays)
+    for i in dataset_offsets_to_process:
         data_array = data_arrays[i]['data']
         data_dims = len(data_array.shape)
         
@@ -413,18 +450,7 @@ def process(net, data_arrays, shapes=None, net_io=None):
 
         if not using_queue:
             pred_array = np.zeros(tuple([fmaps_out] + out_dims))
-
-        list_of_offsets_to_process = []
-
-        while(True):
-            # print("In while loop. offsets = {o}".format(o=offsets))
-            if using_queue:
-                # print("Appending offsets value {o}".format(o=offsets))
-                offsets_to_append = list(offsets)  # make a copy. important!
-                list_of_offsets_to_process.append(offsets_to_append)
-                # print("Just appended. list_of_offsets_to_process is now ",list_of_offsets_to_process)
-            else:
-                # process the old-fashioned way
+            for offsets in dataset_offsets_to_process[i]:
                 if DEBUG:
                     print("Processing offsets ", offsets)
                 data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
@@ -433,6 +459,19 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 print output.mean()
                 set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
 
+
+        while(True):
+            # print("In while loop. offsets = {o}".format(o=offsets))
+            if not using_queue:
+                # process the old-fashioned way
+                # if DEBUG:
+                #     print("Processing offsets ", offsets)
+                # data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
+                # output = process_input_data(net_io, data_slice)
+                # print offsets
+                # print output.mean()
+                # set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
+                pass
             incremented = False
             for d in range(0, dims):
                 if (offsets[dims - 1 - d] == out_dims[dims - 1 - d] - output_dims[dims - 1 - d]):
@@ -447,13 +486,10 @@ def process(net, data_arrays, shapes=None, net_io=None):
             # Processed the whole input block
             if not incremented:
                 break
-
-        if using_queue:
-            dataset_offsets_to_process[i] = list_of_offsets_to_process
         else:
             pred_arrays += [pred_array]
-
     if using_queue:
+
         for source_dataset_index in dataset_offsets_to_process:
             list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
             if DEBUG:
@@ -476,8 +512,9 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 offsets = offsets_to_enqueue.pop(0)
                 offsets = tuple([int(o) for o in offsets])
                 # print("Pre-populating processing queue with data at offset {}".format(offsets))
-                print("Pre-populating data loader's dataset #{i}/{size}"
-                      .format(i=shared_dataset_index, size=processing_data_queue.size))
+                print("Pre-populating data loader's dataset #{i}/{size} with dataset #{d} and offset {o}"
+                      .format(i=shared_dataset_index, size=processing_data_queue.size,
+                              d=source_dataset_index, o=offsets))
                 shared_dataset_index, async_result = processing_data_queue.start_refreshing_shared_dataset(
                     shared_dataset_index,
                     offsets,
@@ -491,7 +528,8 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 data_slice = dataset['data']
                 assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
                 if DEBUG:
-                    print("Processing next dataset in processing queue, which has offset {o}". format(o=dataset['offset']))
+                    print("Processing next dataset in processing queue, which has offset {o}"
+                          .format(o=dataset['offset']))
                 # process the chunk
                 net_io.setInputs([data_slice])
                 net.forward()
