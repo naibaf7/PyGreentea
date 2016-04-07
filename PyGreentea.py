@@ -76,6 +76,7 @@ if __name__ == "__main__":
     sys.exit(0)
 else: 
     import data_queue
+    import data_io
 
 
 # Import Caffe
@@ -424,7 +425,7 @@ def process(net, data_arrays, shapes=None, net_io=None):
     dst = net.blobs['prob']
     dummy_slice = [0]
 
-    using_queue = data_queue.data_queue_should_be_used_with(data_arrays)
+    using_queue = data_io.data_queue_should_be_used_with(data_arrays)
     if using_queue:
         processing_data_queue = data_queue.DatasetQueue(
             size=5,
@@ -654,7 +655,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
     net_io = NetInputWrapper(net, shapes)
 
-    if data_queue.data_queue_should_be_used_with(data_arrays):
+    if data_io.data_queue_should_be_used_with(data_arrays):
         using_asynchronous_queue = True
         # and initialize queue!
         if DEBUG:
