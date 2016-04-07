@@ -10,6 +10,7 @@ import h5py
 import numpy as np
 
 import PyGreentea as pygt
+from util import get_zero_padded_array_slice
 
 ''' where this will be used:
 * train()
@@ -32,7 +33,8 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
     dataset_numpy = dict()
     # load inputs
     # print("original_dataset['data']: ", original_dataset['data'].shape, original_dataset['data'].dtype)
-    data_slice = np.array(original_dataset['data'][input_slice], dtype=np.float32) / (2. ** 8)
+    original_data_slice = get_zero_padded_array_slice(original_dataset['data'], input_slice)
+    data_slice = np.array(original_data_slice, dtype=np.float32) / (2. ** 8)
     if transform:
         if 'transform' in original_dataset:
             # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
