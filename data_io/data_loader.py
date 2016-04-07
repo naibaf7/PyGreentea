@@ -125,6 +125,7 @@ class DataLoader(object):
         return
 
     def _initialize_pool(self):
+        np.random.seed()
         global shared_datasets
         shared_datasets = self.shared_datasets
         global datasets
