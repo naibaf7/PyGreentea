@@ -1,7 +1,6 @@
 from __future__ import print_function
 
 import multiprocessing
-import os
 import time
 from operator import mul
 from os.path import join
@@ -238,5 +237,3 @@ if __name__ == '__main__':
             except:
                 print(key, value)
         print('end   - ********************************************************************************')
-
-

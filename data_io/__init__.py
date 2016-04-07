@@ -1,1 +1,2 @@
+from data_queue import DatasetQueue
 from util import data_queue_should_be_used_with

@@ -75,7 +75,6 @@ if __name__ == "__main__":
     print(bcolors.OKGREEN + ("==== PYGT: Setup finished ====").ljust(80,"=") + bcolors.ENDC)
     sys.exit(0)
 else: 
-    import data_queue
     import data_io
 
 
@@ -427,7 +426,7 @@ def process(net, data_arrays, shapes=None, net_io=None):
 
     using_queue = data_io.data_queue_should_be_used_with(data_arrays)
     if using_queue:
-        processing_data_queue = data_queue.DatasetQueue(
+        processing_data_queue = data_io.DatasetQueue(
             size=5,
             datasets=data_arrays,
             input_shape=tuple(input_dims),
@@ -672,7 +671,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             n_workers=n_workers
         )
         print("creating queue with kwargs {}".format(queue_initialization_kwargs))
-        training_data_queue = data_queue.DatasetQueue(**queue_initialization_kwargs)
+        training_data_queue = data_io.DatasetQueue(**queue_initialization_kwargs)
         # start populating the queue
         for i in range(queue_size):
             which_dataset = randint(0, len(data_arrays) - 1)
