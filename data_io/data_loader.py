@@ -71,7 +71,7 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
     return
 
 
-class DatasetQueue(object):
+class DataLoader(object):
     def __init__(self, size, datasets, input_shape, output_shape=None, n_workers=1):
         self.size = size
         self.datasets = datasets
@@ -219,12 +219,12 @@ if __name__ == '__main__':
             })
         )
     queue_size = 1
-    q = DatasetQueue(queue_size,
-                     datasets=datasets,
-                     input_shape=(80, 80, 80),
-                     output_shape=(60, 60, 60),
-                     n_workers=1
-                     )
+    q = DataLoader(queue_size,
+                   datasets=datasets,
+                   input_shape=(80, 80, 80),
+                   output_shape=(60, 60, 60),
+                   n_workers=1
+                   )
     for j in range(len(datasets)):
         i = 0  # index of shared dataset to use
         shared_dataset_index, async_result = q.start_refreshing_shared_dataset(i, (15, 25, 35), j, wait=True)
