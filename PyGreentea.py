@@ -13,6 +13,8 @@ import time
 # set this to True after importing this module to prevent multithreading
 USE_ONE_THREAD = False
 
+DEBUG = False
+
 # Determine where PyGreentea is
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
 
@@ -158,9 +160,9 @@ def getCaffeModels(prefix):
     return sorted(caffemodels)
 
 
-def error_scale(data, factor_low, factor_high):
-    scale = np.add((data >= 0.5) * factor_high, (data < 0.5) * factor_low)
-    return scale
+def scale_errors(data, factor_low, factor_high):
+    scaled_data = np.add((data >= 0.5) * factor_high, (data < 0.5) * factor_low)
+    return scaled_data
 
 
 def count_affinity(dataset):
@@ -185,7 +187,10 @@ def augment_data_simple(dataset):
                             continue
 
                         dataset.append({})
-                        dataset[-1]['name'] = dataset[iset]['name']
+                        dataset[-1]['name'] = dataset[iset]['name']+'_x'+str(reflectx)+'_y'+str(reflecty)+'_z'+str(reflectz)+'_xy'+str(swapxy)
+
+
+
                         dataset[-1]['nhood'] = dataset[iset]['nhood']
                         dataset[-1]['data'] = dataset[iset]['data'][:]
                         dataset[-1]['components'] = dataset[iset]['components'][:]
@@ -418,7 +423,7 @@ def process(net, data_arrays, shapes=None, net_io=None):
         data_array = data_arrays[i]['data']
         data_dims = len(data_array.shape)
         
-        offsets = []        
+        offsets = []
         in_dims = []
         out_dims = []
         for d in range(0, dims):
@@ -440,7 +445,8 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 # print("Just appended. list_of_offsets_to_process is now ",list_of_offsets_to_process)
             else:
                 # process the old-fashioned way
-                print("Processing offsets ", offsets)
+                if DEBUG:
+                    print("Processing offsets ", offsets)
                 data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
                 net_io.setInputs([data_slice])
                 net.forward()
@@ -471,10 +477,11 @@ def process(net, data_arrays, shapes=None, net_io=None):
 
     if using_queue:
         for source_dataset_index in dataset_offsets_to_process:
-            print("source_dataset_index = ",source_dataset_index)
             list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
-            print("Processing source volume #{i} with offsets list {o}"
-                  .format(i=source_dataset_index, o=list_of_offsets_to_process))
+            if DEBUG:
+                print("source_dataset_index = ",source_dataset_index)
+                print("Processing source volume #{i} with offsets list {o}"
+                      .format(i=source_dataset_index, o=list_of_offsets_to_process))
             # make a copy of that list for enqueueing purposes
             offsets_to_enqueue = list(list_of_offsets_to_process)
             data_array = data_arrays[source_dataset_index]['data']
@@ -491,20 +498,22 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 offsets = offsets_to_enqueue.pop(0)
                 offsets = tuple([int(o) for o in offsets])
                 # print("Pre-populating processing queue with data at offset {}".format(offsets))
+                print("Pre-populating data loader's dataset #{i}/{size}"
+                      .format(i=shared_dataset_index, size=processing_data_queue.size))
                 shared_dataset_index, async_result = processing_data_queue.start_refreshing_shared_dataset(
                     shared_dataset_index,
                     offsets,
                     source_dataset_index,
-                    transform=False
+                    transform=False,
+                    wait=True
                 )
-                # print(async_result.get())
-
             # process each offset
             for i_offsets in range(len(list_of_offsets_to_process)):
                 dataset, index_of_shared_dataset = processing_data_queue.get_dataset()
                 data_slice = dataset['data']
                 assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
-                print("Processing next dataset in processing queue, which has offset {o}". format(o=dataset['offset']))
+                if DEBUG:
+                    print("Processing next dataset in processing queue, which has offset {o}". format(o=dataset['offset']))
                 # process the chunk
                 net_io.setInputs([data_slice])
                 net.forward()
@@ -632,29 +641,33 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     if data_queue.data_queue_should_be_used_with(data_arrays):
         using_asynchronous_queue = True
         # and initialize queue!
-        queue_size = 5
-        n_workers = 3
-        training_data_queue = data_queue.DatasetQueue(
+        if DEBUG:
+            queue_size = 3
+            n_workers = 2
+        else:
+            queue_size = 20
+            n_workers = 10
+        queue_initialization_kwargs = dict(
             size=queue_size,
             datasets=data_arrays,
             input_shape=tuple(input_dims),
             output_shape=tuple(output_dims),
             n_workers=n_workers
         )
+        print("creating queue with kwargs {}".format(queue_initialization_kwargs))
+        training_data_queue = data_queue.DatasetQueue(**queue_initialization_kwargs)
         # start populating the queue
         for i in range(queue_size):
             which_dataset = randint(0, len(data_arrays) - 1)
             offsets = []
             for j in range(0, dims):
-                offsets.append(randint(0, data_arrays[0]['data'].shape[j] - (output_dims[j] + input_padding[j])))
+                offsets.append(randint(0, data_arrays[which_dataset]['data'].shape[j] - (output_dims[j] + input_padding[j])))
             offsets = tuple([int(x) for x in offsets])
             # print("offsets = ", offsets)
+            print("Pre-populating data loader's dataset #{i}/{size}"
+                  .format(i=i, size=training_data_queue.size))
             shared_dataset_index, async_result = \
-                training_data_queue.start_refreshing_shared_dataset(i, offsets, which_dataset)
-            # final_result = async_result.get()
-            # if final_result is not None:
-            #     # probably an error...
-            #     print(final_result)
+                training_data_queue.start_refreshing_shared_dataset(i, offsets, which_dataset, wait=True)
     else:
         using_asynchronous_queue = False
 
@@ -697,10 +710,15 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
             label_slice = dataset['label']
             assert label_slice.shape == (fmaps_out,) + tuple(output_dims)
-            print("Training with next dataset in queue, which has offset {o}". format(o=dataset['offset']))
+            if DEBUG:
+                print("Training with next dataset in queue, which has offset {o}". format(o=dataset['offset']))
+            mask_slice = None
+            if 'mask' in dataset:
+                mask_slice = dataset['mask']
 
-        print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, data_slice.max() {}"
-              .format(data_slice.min(), data_slice.mean(), data_slice.max()))
+        if DEBUG:
+            print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, "
+                  "data_slice.max() {}".format(data_slice.min(), data_slice.mean(), data_slice.max()))
 
         if options.loss_function == 'malis':
             components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
@@ -708,15 +726,18 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             net_io.setInputs([data_slice, label_slice, components_slice, data_arrays[0]['nhood']])
             
         if options.loss_function == 'euclid':
-            if(options.scale_error == True):
-                frac_pos = np.clip(label_slice.mean(),0.05,0.95)
-                w_pos = 1.0/(2.0*frac_pos)
-                w_neg = 1.0/(2.0*(1.0-frac_pos))
-            else:
-                w_pos = 1
-                w_neg = 1          
-            
-            net_io.setInputs([data_slice, label_slice, error_scale(label_slice,w_neg,w_pos)])
+            label_slice_mean = label_slice.mean()
+            if 'mask' in dataset:
+                label_slice = label_slice * mask_slice
+                label_slice_mean = label_slice.mean() / mask_slice.mean()
+            w_pos = 1.0
+            w_neg = 1.0
+            if options.scale_error:
+                frac_pos = np.clip(label_slice_mean, 0.05, 0.95)
+                w_pos = w_pos / (2.0 * frac_pos)
+                w_neg = w_neg / (2.0 * (1.0 - frac_pos))
+            error_scale_slice = scale_errors(label_slice, w_neg, w_pos)
+            net_io.setInputs([data_slice, label_slice, error_scale_slice])
 
         if options.loss_function == 'softmax':
             # These are the affinity edge values
@@ -761,6 +782,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
         time_counter += 1
         total_time += time.time() - start
-        print("taking {} on average per iteration".format(total_time/time_counter))
+        if DEBUG:
+            print("taking {} on average per iteration".format(total_time/time_counter))
 
 
