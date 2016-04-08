@@ -407,23 +407,15 @@ def generate_dataset_offsets_for_processing(net, data_arrays):
     return dataset_offsets_to_process
 
 
-def process(net, data_arrays, shapes=None, net_io=None):    
+def process(net, data_arrays, shapes=None, net_io=None):
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
-
     dims = len(output_dims)
-    
-    if (shapes == None):
-        shapes = []
+    if shapes is None:
         # Raw data slice input         (n = 1, f = 1, spatial dims)
-        shapes += [[1,fmaps_in] + input_dims]
-        
-    if (net_io == None):
+        shapes = [[1, fmaps_in] + input_dims]
+    if net_io is None:
         net_io = NetInputWrapper(net, shapes)
-            
-    dst = net.blobs['prob']
-    dummy_slice = [0]
-
     using_data_loader = data_io.data_loader_should_be_used_with(data_arrays)
     if using_data_loader:
         processing_data_loader = data_io.DataLoader(
@@ -433,50 +425,25 @@ def process(net, data_arrays, shapes=None, net_io=None):
             output_shape=None,  # ignore labels
             n_workers=3
         )
-
     pred_arrays = []
     dataset_offsets_to_process = generate_dataset_offsets_for_processing(net, data_arrays)
-    for i in dataset_offsets_to_process:
-        data_array = data_arrays[i]['data']
+    for source_dataset_index in dataset_offsets_to_process:
+        list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
+        if DEBUG:
+            print("source_dataset_index = ", source_dataset_index)
+            print("Processing source volume #{i} with offsets list {o}"
+                  .format(i=source_dataset_index, o=list_of_offsets_to_process))
+        # make a copy of that list for enqueueing purposes
+        offsets_to_enqueue = list(list_of_offsets_to_process)
+        data_array = data_arrays[source_dataset_index]['data']
         data_dims = len(data_array.shape)
-        
-        offsets = []
         in_dims = []
         out_dims = []
-        for d in range(0, dims):
-            offsets += [0]
-            in_dims += [data_array.shape[data_dims-dims+d]]
-            out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
-
-        if not using_data_loader:
-            pred_array = np.zeros(tuple([fmaps_out] + out_dims))
-            for offsets in dataset_offsets_to_process[i]:
-                if DEBUG:
-                    print("Processing offsets ", offsets)
-                data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
-                output = process_input_data(net_io, data_slice)
-                print offsets
-                print output.mean()
-                set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
-            pred_arrays += [pred_array]
-    if using_data_loader:
-
-        for source_dataset_index in dataset_offsets_to_process:
-            list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
-            if DEBUG:
-                print("source_dataset_index = ",source_dataset_index)
-                print("Processing source volume #{i} with offsets list {o}"
-                      .format(i=source_dataset_index, o=list_of_offsets_to_process))
-            # make a copy of that list for enqueueing purposes
-            offsets_to_enqueue = list(list_of_offsets_to_process)
-            data_array = data_arrays[source_dataset_index]['data']
-            data_dims = len(data_array.shape)
-            in_dims = []
-            out_dims = []
-            for d in range(0, dims):
-                in_dims += [data_array.shape[data_dims-dims+d]]
-                out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
-            pred_array = np.zeros(tuple([fmaps_out] + out_dims))
+        for d in range(dims):
+            in_dims += [data_array.shape[data_dims - dims + d]]
+            out_dims += [data_array.shape[data_dims - dims + d] - input_padding[d]]
+        pred_array = np.zeros(tuple([fmaps_out] + out_dims))
+        if using_data_loader:
             # start pre-populating queue
             for shared_dataset_index in range(min(processing_data_loader.size, len(list_of_offsets_to_process))):
                 # fill shared-memory datasets with an offset
@@ -493,36 +460,40 @@ def process(net, data_arrays, shapes=None, net_io=None):
                     transform=False,
                     wait=True
                 )
-            # process each offset
-            for i_offsets in range(len(list_of_offsets_to_process)):
+        # process each offset
+        for i_offsets in range(len(list_of_offsets_to_process)):
+            if using_data_loader:
                 dataset, index_of_shared_dataset = processing_data_loader.get_dataset()
+                offsets = list(dataset['offset'])  # convert tuple to list
                 data_slice = dataset['data']
-                assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
                 if DEBUG:
                     print("Processing next dataset in processing data loader, which has offset {o}"
                           .format(o=dataset['offset']))
-                # process the chunk
-                net_io.setInputs([data_slice])
-                net.forward()
-                output = dst.data[0].copy()
-                offsets_of_this_batch = list(dataset['offset'])  # convert tuple to list
-                print offsets_of_this_batch
-                print output.mean()
-                set_slice_data(pred_array, output, [0] + offsets_of_this_batch, [fmaps_out] + output_dims)
-                if len(offsets_to_enqueue) > 0:
-                    # start adding the next slice to the loader with index_of_shared_dataset
-                    new_offsets = offsets_to_enqueue.pop(0)
-                    processing_data_loader.start_refreshing_shared_dataset(
-                        index_of_shared_dataset,
-                        new_offsets,
-                        source_dataset_index,
-                        transform=False
-                    )
-            pred_arrays += [pred_array]
-            
+            else:
+                offsets = list_of_offsets_to_process[i_offsets]
+                data_slice = slice_data(
+                    data_array,
+                    [0] + offsets,
+                    [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
+                )
+            # process the chunk
+            output = process_input_data(net_io, data_slice)
+            print(offsets)
+            print(output.mean())
+            set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
+            if using_data_loader and len(offsets_to_enqueue) > 0:
+                # start adding the next slice to the loader with index_of_shared_dataset
+                new_offsets = offsets_to_enqueue.pop(0)
+                processing_data_loader.start_refreshing_shared_dataset(
+                    index_of_shared_dataset,
+                    new_offsets,
+                    source_dataset_index,
+                    transform=False
+                )
+        pred_arrays.append(pred_array)
     return pred_arrays
-      
-        
+
+
     # Wrapper around a networks 
 class TestNetEvaluator:
     
