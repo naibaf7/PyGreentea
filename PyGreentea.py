@@ -395,7 +395,7 @@ def generate_dataset_offsets_for_processing(net, data_arrays, process_borders):
             incremented = False
             for d in range(dims):
                 if process_borders:
-                    maximum_offset = in_dims[dims - 1 - d] - input_padding[dims - 1 - d]
+                    maximum_offset = in_dims[dims - 1 - d] - output_dims[dims - 1 - d] - border_widths[dims - 1 - d]
                 else:
                     maximum_offset = out_dims[dims - 1 - d] - output_dims[dims - 1 - d]
                 if offsets[dims - 1 - d] == maximum_offset:
