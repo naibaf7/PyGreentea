@@ -6,6 +6,7 @@ import matplotlib
 import random
 import math, copy
 import multiprocessing
+import net_visualizer as nvs
 from Crypto.Random.random import randint
 from functools import partial
 
@@ -163,6 +164,7 @@ class NetworkGenerator:
     def __init__(self, netconf, mode):
         self.netconf = copy.deepcopy(netconf)
         self.mode = copy.deepcopy(mode)
+        self.graph = nvs.Graph()
         
     def compute_memory_aux(self, shape_arr):
         memory = 0
@@ -336,11 +338,12 @@ class NetworkGenerator:
                                     weight_filler=dict(type='gaussian', std=weight_std),
                                     bias_filler=dict(type='constant'))
     
-    def max_pool(self, run_shape, bottom, kernel_size=[2], stride=[2], pad=[0], dilation=[1]):
+    def max_pool(self, run_shape, bottom, kernel_size=[2], stride=[2], pad=[0]):
+        dilation = run_shape[-1].dilation
         update = RunShapeUpdater()
 
         # Shape update rules
-        update.dilation_update = lambda x: [x[i] * dilation[min(i,len(dilation)-1)] for i in range(0,len(x))]
+        update.dilation_update = lambda x: [x[i] * ((kernel_size[min(i,len(kernel_size)-1)]) if (stride[min(i,len(stride)-1)]==1) else 1) for i in range(0,len(x))]
 
         # Strictly speaking this update rule is not complete, but should be sufficient for USK
         if dilation[0] == 1 and kernel_size[0] == stride[0]:
@@ -362,7 +365,7 @@ class NetworkGenerator:
         update.shape_update = lambda x: [kernel_size[min(i,len(kernel_size)-1)] * x[i] for i in range(0,len(run_shape[-1].shape))]
         self.update_shape(run_shape, update)
         
-        deconv = L.Deconvolution(bottom, convolution_param=dict(num_output=num_output_dec, kernel_size=kernel_size, stride=stride, pad=[0], dilation=[1], group=num_output_dec,
+        deconv = L.Deconvolution(bottom, convolution_param=dict(num_output=num_output_dec, kernel_size=kernel_size, stride=stride, pad=[0], group=num_output_dec,
                                                                 weight_filler=dict(type='constant', value=1), bias_term=False),
                                  param=dict(lr_mult=0, decay_mult=0))
     
@@ -380,7 +383,7 @@ class NetworkGenerator:
         update.shape_update = lambda x: [x[i] for i in range(0,len(run_shape[-1].shape))]
         self.update_shape(run_shape, update)
     
-        conv = L.Convolution(deconv, num_output=num_output_conv, kernel_size=[1], stride=[1], pad=[0], dilation=[1], group=1,
+        conv = L.Convolution(deconv, num_output=num_output_conv, kernel_size=[1], stride=[1], pad=[0], group=1,
                                 param=[dict(lr_mult=1),dict(lr_mult=2)],
                                 weight_filler=dict(type='gaussian', std=weight_std),
                                 bias_filler=dict(type='constant'))
@@ -401,21 +404,25 @@ class NetworkGenerator:
     def weight_filler(self, shape, ksizes):
         return math.sqrt(2.0/float(shape.fmaps*reduce(lambda a,b: a * b, [abs(ksizes[min(i, len(ksizes)-1)]) for i in range(0,len(shape.shape))])))
     
-    def implement_sknet(self, netconf, sknetconf, net, run_shape, blobs, fmaps_start):
+    def implement_sknet(self, netconf, sknetconf, net, run_shape, blobs, fmaps_start, uidx=0, skidx=0):
         fmaps = fmaps_start
-        sw_shape = [sknetconf.sknet_padding[i] + 1 for i in range(0,len(sknetconf.sknet_padding))]
-        # print("sw_shape: %s, %s" % (0, sw_shape))
-        dilation = 2
+        sw_shape = [sknetconf.sknet_padding[min(i,len(sknetconf.sknet_padding)-1)] + 1 for i in range(0,len(run_shape[-1].shape))]
         for i in range(0, len(sknetconf.sknet_conv)):
             final_ksize = [sknetconf.sknet_conv[i][min(j, len(sknetconf.sknet_conv[i])-1)] for j in range(0,len(sw_shape))]
             for j in range(0, len(sw_shape)):
-                if((sw_shape[j] - (final_ksize[j] - 1)) % 2 == 0):
+                if(not (sw_shape[j] - (final_ksize[j] - 1)) % 2 == 0):
                     final_ksize[j] += 1
                 sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) / 2
             conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=final_ksize, weight_std=self.weight_filler(run_shape[-1], final_ksize))
             blobs = blobs + [relu]
-            pool = self.max_pool(run_shape, blobs[-1], kernel_size=[2], stride=[1], dilation=[dilation])
+            conv.name = 'conv_U-' + str(uidx) + '_SK-' + str(skidx) + '_C-' + str(i)
+            node = nvs.Node(conv, run_shape[-1])
+            self.graph.add_node(node)
+            pool = self.max_pool(run_shape, blobs[-1], kernel_size=[2], stride=[1])
             blobs = blobs + [pool]
+            pool.name = 'pool_U-' + str(uidx) + '_SK-' + str(skidx) + '_P-' + str(i)
+            node = nvs.Node(pool, run_shape[-1])
+            self.graph.add_node(node)
             if (i < len(sknetconf.sknet_conv) - 1):
                 fmaps = sknetconf.sknet_fmap_inc_rule(fmaps)
 
@@ -424,12 +431,19 @@ class NetworkGenerator:
         conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=sw_shape, weight_std=self.weight_filler(run_shape[-1], sw_shape))
         blobs = blobs + [relu]
         run_shape[-1].dilation = [1 for i in range(0,len(run_shape[-1].dilation))]
-            
+        conv.name = 'conv_U-' + str(uidx) + '_SK-' + str(skidx) + '_IP-0'
+        node = nvs.Node(conv, run_shape[-1])
+        self.graph.add_node(node)
+        
+        print(run_shape[-1].shape)
         # Remaining IP layers
         for i in range(0, sknetconf.sknet_ip_depth - 1):
             fmaps = sknetconf.sknet_fmap_dec_rule(fmaps)
             conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=[1], weight_std=self.weight_filler(run_shape[-1], [1]))
+            conv.name = 'conv_U-' + str(uidx) + '_SK-' + str(skidx) + '_IP-' + str(1 + i)
             blobs = blobs + [relu]
+            node = nvs.Node(conv, run_shape[-1])
+            self.graph.add_node(node)
         
         return blobs, run_shape
                 
@@ -437,6 +451,11 @@ class NetworkGenerator:
     def implement_usknet(self, netconf, net, run_shape, blobs, fmaps_start, fmaps_end): 
         if self.mode == caffe_pb2.TEST:
             self.netconf.dropout = 0
+            
+        # Add the start node to the graph
+        net.data.name = 'data'
+        node = nvs.Node(net.data, run_shape[-1])
+        self.graph.add_node(node)
         
         fmaps = fmaps_start
         
@@ -454,11 +473,17 @@ class NetworkGenerator:
                     for j in range(0,len(convolution_config)):
                         conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                         blobs = blobs + [relu]
+                        conv.name = 'conv_U-' + str(uidx) + '_LD-' + str(i) + '_C-' + str(j)
+                        node = nvs.Node(conv, run_shape[-1])
+                        self.graph.add_node(node)
     
                     mergecrop_tracker += [[len(blobs)-1,len(run_shape)-1]]
                     pool = self.max_pool(run_shape, blobs[-1], kernel_size=unetconf.unet_downsampling_strategy[i], stride=unetconf.unet_downsampling_strategy[i])
                     blobs = blobs + [pool]
                     fmaps = unetconf.unet_fmap_inc_rule(fmaps)
+                    pool.name = 'pool_U-' + str(uidx) + '_LD-' + str(i) + '_P-0'
+                    node = nvs.Node(pool, run_shape[-1])
+                    self.graph.add_node(node)
         
             
             # If there is no SK-Net component, fill with normal convolutions
@@ -469,12 +494,20 @@ class NetworkGenerator:
                     if (unetconf.use_deconvolution_uppath and j >= len(convolution_config)/2):
                         conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], pad=[convolution_config[j][k] - 1 for k in range(0,len(convolution_config[j]))], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                         blobs = blobs + [relu]
+                        conv.name = 'conv_U-' + str(uidx) + '_LD-' + str(unetconf.unet_depth) + '_C-' + str(j)
+                        node = nvs.Node(conv, run_shape[-1])
+                        self.graph.add_node(node)
+                        
                     else:
                         conv, relu, _, _ = self.conv_relu(run_shape, blobs[-1], fmaps, kernel_size=convolution_config[j], weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
                         blobs = blobs + [relu]
+                        conv.name = 'conv_U-' + str(uidx) + '_LU-' + str(unetconf.unet_depth) + '_C-' + str(j)
+                        node = nvs.Node(conv, run_shape[-1])
+                        self.graph.add_node(node)
 
             else:
-                blobs, run_shape = self.implement_sknet(netconf, unetconf.sk_netconfs[unetconf.unet_depth], net, run_shape, blobs, unetconf.sk_netconfs[unetconf.unet_depth].sknet_fmap_inc_rule(fmaps))
+                blobs, run_shape = self.implement_sknet(netconf, unetconf.sk_netconfs[unetconf.unet_depth], net, run_shape, blobs, unetconf.sk_netconfs[unetconf.unet_depth].sknet_fmap_inc_rule(fmaps),
+                                                        uidx=uidx, skidx=unetconf.unet_depth)
                 fmaps = run_shape[-1].fmaps
     
             if unetconf.unet_depth > 0:
@@ -484,6 +517,8 @@ class NetworkGenerator:
                                                stride=unetconf.unet_downsampling_strategy[unetconf.unet_depth - i - 1],
                                                weight_std=self.weight_filler(run_shape[-1],unetconf.unet_downsampling_strategy[unetconf.unet_depth - i - 1]))
                     blobs = blobs + [conv]
+                    deconv.name = 'conv_U-' + str(uidx) + '_LU-' + str(unetconf.unet_depth - i - 1) + '_DD-0'
+                    conv.name = 'conv_U-' + str(uidx) + '_LU-' + str(unetconf.unet_depth - i - 1) + '_DC-0'
                     fmaps = unetconf.unet_fmap_dec_rule(fmaps)
                     
                     pre_merge_blobs = [blobs[mergecrop_tracker[unetconf.unet_depth - i - 1][0]]]
@@ -494,7 +529,8 @@ class NetworkGenerator:
                         sknet_conf = copy.deepcopy(unetconf.sk_netconfs[unetconf.unet_depth - i - 1])
                         sknet_conf.sknet_padding = [run_shape[pre_merge_shape_index].shape[k] - run_shape[-1].shape[k] for k in range(0,len(run_shape[-1].shape))]
                         sk_run_shape = [run_shape[pre_merge_shape_index]]
-                        pre_merge_blobs, sk_run_shape = self.implement_sknet(netconf, sknet_conf, net, sk_run_shape, pre_merge_blobs, sknet_conf.sknet_fmap_inc_rule(run_shape[pre_merge_shape_index].fmaps))
+                        pre_merge_blobs, sk_run_shape = self.implement_sknet(netconf, sknet_conf, net, sk_run_shape, pre_merge_blobs, sknet_conf.sknet_fmap_inc_rule(run_shape[pre_merge_shape_index].fmaps),
+                                                                             uidx=uidx, skidx=unetconf.unet_depth - i - 1)
                         new_run_shape = run_shape[0:pre_merge_shape_index]+sk_run_shape
                         new_pre_merge_shape_index = len(new_run_shape) - 1
                         new_run_shape += run_shape[pre_merge_shape_index+1:len(run_shape)]
@@ -504,6 +540,9 @@ class NetworkGenerator:
                     # Here, layer (2 + 3 * i) with reversed i (high to low) is picked
                     mergec = self.mergecrop(run_shape, pre_merge_shape_index, blobs[-1], pre_merge_blobs[-1])
                     blobs = blobs + [mergec]
+                    mergec.name = 'conv_U-' + str(uidx) + '_LU-' + str(unetconf.unet_depth - i - 1) + '_M-0'
+                    node = nvs.Node(mergec, run_shape[-1])
+                    self.graph.add_node(node)
                     
                     convolution_config = unetconf.unet_conv_up[min(unetconf.unet_depth - i - 1, len(unetconf.unet_conv_up) - 1)]
                     for j in range(0,len(convolution_config)):
@@ -517,6 +556,9 @@ class NetworkGenerator:
                                                     bridge_in=(bridge_in if (unetconf.bridge == True and j == len(convolution_config)-1 and i == unetconf.unet_depth-1) else None),
                                                     bridge_in_index=bridge_in_index,
                                                     pad=pad, weight_std=self.weight_filler(run_shape[-1], convolution_config[j]))
+                        conv.name = 'conv_U-' + str(uidx) + '_LU-' + str(i) + '_C-' + str(j)
+                        node = nvs.Node(conv, run_shape[-1])
+                        self.graph.add_node(node)
                         # Update shortcut / bridge input to jump the next U-Net
                         if (j == len(convolution_config)-1 and i == unetconf.unet_depth-1):
                             if (unetconf.bridge == True and bridge != None):
@@ -531,7 +573,9 @@ class NetworkGenerator:
                                
         conv = self.convolution(run_shape, blobs[-1], fmaps_end, kernel_size=[1], weight_std=self.weight_filler(run_shape[-1], [1]))
         blobs = blobs + [conv]
-        
+        conv.name = 'conv_out'
+        node = nvs.Node(conv, run_shape[-1])
+        self.graph.add_node(node)
         
         if (not netconf.ignore_conv_buffer and self.compute_memory_buffers(run_shape) > netconf.mem_buf_limit):
             raise ConvolutionBufferException("Constraint violated: convolution buffer exceeds limt, %s > %s", self.compute_memory_buffers(run_shape), netconf.mem_buf_limit)
@@ -691,6 +735,11 @@ def compute_valid_io_shapes(netconf, netmode, min_output_shape, max_output_shape
                 netgen.implement_usknet(netconf, net, run_shape_out, blobs, fmaps_start, fmaps_out)
             except (MemoryLimitException, ConvolutionBufferException, ShapeException, LayerException):
                 limit_reached = True
+                
+            # Deterministic exit condition (protects against infiite looping)
+            if fmaps_start > 100000:
+                upper_limit = 100000
+                break;
         
             if (not limit_reached and incexp):
                 fmaps_start *= 2
@@ -814,10 +863,14 @@ def caffenet(netconf, netmode):
     # Return the protocol buffer of the generated network
     protonet = net.to_proto()
     protonet.name = 'NET_' + ('TEST' if (netmode == caffe_pb2.TEST) else 'TRAIN')
-    return protonet
+    netgen.graph.set_netspec(net)
+    tikzgraph = netgen.graph.generate_tikz_graph()
+    return (protonet, tikzgraph)
 
 
 def create_nets(netconf):
-    return (caffenet(netconf, caffe_pb2.TRAIN), caffenet(netconf, caffe_pb2.TEST))
+    trainnet, trainnet_tikzgraph = caffenet(netconf, caffe_pb2.TRAIN)
+    testnet, testnet_tikzgraph = caffenet(netconf, caffe_pb2.TEST)
+    return (trainnet, testnet, trainnet_tikzgraph, testnet_tikzgraph)
 
 

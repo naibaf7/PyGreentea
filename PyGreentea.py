@@ -303,6 +303,34 @@ def dump_feature_maps(net, folder):
             # print(np.uint8(norm[f,:]).shape)
             writer.write(outfile, np.uint8(norm[f,:]))
             outfile.close()
+            
+            
+def dump_tikzgraph_maps(net, folder):
+    xmaps = 2
+    ymaps = 2
+    padding = 12
+    
+    for key in net.blobs.keys():
+        dst = net.blobs[key]
+        norm = normalize(dst.data[0], 0, 255)
+        
+        width = xmaps*norm.shape[2]+(xmaps-1)*padding
+        height = ymaps*norm.shape[2]+(ymaps-1)*padding
+        
+        mapout = np.ones((width,height))*255
+        
+        # print(norm.shape)
+        for f in range(0,xmaps * ymaps):
+            xoff = (norm.shape[2] + padding) * (f % xmaps)
+            yoff = (norm.shape[1] + padding) * (f / xmaps)
+            
+            mapout[xoff:xoff+norm.shape[2],yoff:yoff+norm.shape[1]] = norm[min(f,norm.shape[0]-1),:]
+            
+            outfile = open(folder+'/'+key+'.png', 'wb')
+            writer = png.Writer(width, height, greyscale=True)
+            # print(np.uint8(norm[f,:]).shape)
+            writer.write(outfile, np.uint8(mapout))
+            outfile.close()
                 
         
 def get_net_input_specs(net, test_blobs = ['data', 'label', 'scale', 'label_affinity', 'affinty_edges']):
