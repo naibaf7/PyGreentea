@@ -598,7 +598,7 @@ class NetworkGenerator:
         if (self.netconf.loss_activation == 'sigmoid'):
             loss_blob = L.Sigmoid(blob, ntop=1, in_place=in_place)
         elif (self.netconf.loss_activation == 'relu'):
-            loss_blob = L.ReLU(blob, ntop=1, in_place=in_place, negative_slope=self.netconf.relu_slope)
+            loss_blob = L.ReLU(blob, ntop=1, in_place=in_place, negative_slope=0.0)
         else:
             loss_blob = None
         return loss_blob        
