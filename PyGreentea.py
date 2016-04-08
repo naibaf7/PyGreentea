@@ -413,10 +413,19 @@ def generate_dataset_offsets_for_processing(net, data_arrays, process_borders):
     return dataset_offsets_to_process
 
 
-def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=True):
+def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=True, target_arrays=None):
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
     dims = len(output_dims)
+    if target_arrays:
+        for data_array, target in zip(data_arrays, target_arrays):
+            prediction_shape = (fmaps_out,) + data_array['data'].shape[-dims:]
+            assert prediction_shape == target.shape, \
+                "Target array for dname {} is the wrong shape. {} should be {}"\
+                    .format(data_array['name'], target.shape, prediction_shape)
+        pred_arrays = target_arrays
+    else:
+        pred_arrays = []
     if shapes is None:
         # Raw data slice input         (n = 1, f = 1, spatial dims)
         shapes = [[1, fmaps_in] + input_dims]
@@ -443,8 +452,11 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
         # make a copy of that list for enqueueing purposes
         offsets_to_enqueue = list(list_of_offsets_to_process)
         data_array = data_arrays[source_dataset_index]['data']
-        prediction_shape = (fmaps_out,) + data_array.shape[-dims:]
-        pred_array = np.zeros(shape=prediction_shape, dtype=np.float32)
+        if target_arrays:
+            pred_array = target_arrays[source_dataset_index]
+        else:
+            prediction_shape = (fmaps_out,) + data_array.shape[-dims:]
+            pred_array = np.zeros(shape=prediction_shape, dtype=np.float32)
         if using_data_loader:
             # start pre-populating queue
             for shared_dataset_index in range(min(processing_data_loader.size, len(list_of_offsets_to_process))):
@@ -501,7 +513,8 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
                     source_dataset_index,
                     transform=False
                 )
-        pred_arrays.append(pred_array)
+        if not target_arrays:
+            pred_arrays.append(pred_array)
     return pred_arrays
 
 
