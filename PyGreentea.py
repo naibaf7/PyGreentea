@@ -370,44 +370,50 @@ def process_input_data(net_io, input_data):
     return output
 
 
-def generate_dataset_offsets_for_processing(net, data_arrays):
+def generate_dataset_offsets_for_processing(net, data_arrays, process_borders):
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     dims = len(output_dims)
     dataset_offsets_to_process = dict()
-    for i in range(0, len(data_arrays)):
+    for i in range(len(data_arrays)):
         data_array = data_arrays[i]['data']
         data_dims = len(data_array.shape)
-        offsets = []
+        if process_borders:
+            border_widths = [int(math.ceil(pad / float(2))) for pad in input_padding]
+            origin = [-border_width for border_width in border_widths]
+        else:
+            origin = [0 for _ in input_padding]
+        offsets = list(origin)
         in_dims = []
         out_dims = []
-        for d in range(0, dims):
-            offsets += [0]
+        for d in range(dims):
             in_dims += [data_array.shape[data_dims-dims+d]]
             out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
         list_of_offsets_to_process = []
         while True:
-            # print("In while loop. offsets = {o}".format(o=offsets))
-                # print("Appending offsets value {o}".format(o=offsets))
             offsets_to_append = list(offsets)  # make a copy. important!
             list_of_offsets_to_process.append(offsets_to_append)
             incremented = False
-            for d in range(0, dims):
-                if (offsets[dims - 1 - d] == out_dims[dims - 1 - d] - output_dims[dims - 1 - d]):
+            for d in range(dims):
+                if process_borders:
+                    maximum_offset = in_dims[dims - 1 - d] - input_padding[dims - 1 - d]
+                else:
+                    maximum_offset = out_dims[dims - 1 - d] - output_dims[dims - 1 - d]
+                if offsets[dims - 1 - d] == maximum_offset:
                     # Reset direction
-                    offsets[dims - 1 - d] = 0
+                    offsets[dims - 1 - d] = origin[d]
                 else:
                     # Increment direction
-                    offsets[dims - 1 - d] = min(offsets[dims - 1 - d] + output_dims[dims - 1 - d], out_dims[dims - 1 - d] - output_dims[dims - 1 - d])
+                    next_potential_offset = offsets[dims - 1 - d] + output_dims[dims - 1 - d]
+                    offsets[dims - 1 - d] = min(next_potential_offset, maximum_offset)
                     incremented = True
                     break
-            # Processed the whole input block
             if not incremented:
                 break
         dataset_offsets_to_process[i] = list_of_offsets_to_process
     return dataset_offsets_to_process
 
 
-def process(net, data_arrays, shapes=None, net_io=None):
+def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=True):
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
     dims = len(output_dims)
@@ -426,7 +432,8 @@ def process(net, data_arrays, shapes=None, net_io=None):
             n_workers=3
         )
     pred_arrays = []
-    dataset_offsets_to_process = generate_dataset_offsets_for_processing(net, data_arrays)
+    dataset_offsets_to_process = generate_dataset_offsets_for_processing(
+        net, data_arrays, process_borders=zero_pad_source_data)
     for source_dataset_index in dataset_offsets_to_process:
         list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
         if DEBUG:
@@ -436,13 +443,8 @@ def process(net, data_arrays, shapes=None, net_io=None):
         # make a copy of that list for enqueueing purposes
         offsets_to_enqueue = list(list_of_offsets_to_process)
         data_array = data_arrays[source_dataset_index]['data']
-        data_dims = len(data_array.shape)
-        in_dims = []
-        out_dims = []
-        for d in range(dims):
-            in_dims += [data_array.shape[data_dims - dims + d]]
-            out_dims += [data_array.shape[data_dims - dims + d] - input_padding[d]]
-        pred_array = np.zeros(tuple([fmaps_out] + out_dims))
+        prediction_shape = (fmaps_out,) + data_array.shape[-dims:]
+        pred_array = np.zeros(shape=prediction_shape, dtype=np.float32)
         if using_data_loader:
             # start pre-populating queue
             for shared_dataset_index in range(min(processing_data_loader.size, len(list_of_offsets_to_process))):
@@ -471,16 +473,25 @@ def process(net, data_arrays, shapes=None, net_io=None):
                           .format(o=dataset['offset']))
             else:
                 offsets = list_of_offsets_to_process[i_offsets]
-                data_slice = slice_data(
-                    data_array,
-                    [0] + offsets,
-                    [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
-                )
+                if zero_pad_source_data:
+                    data_slice = data_io.util.get_zero_padded_slice_from_array_by_offset(
+                        array=data_array,
+                        origin=[0] + offsets,
+                        shape=[fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
+                    )
+                else:
+                    data_slice = slice_data(
+                        data_array,
+                        [0] + offsets,
+                        [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
+                    )
             # process the chunk
             output = process_input_data(net_io, data_slice)
             print(offsets)
             print(output.mean())
-            set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
+            pads = [int(math.ceil(pad / float(2))) for pad in input_padding]
+            offsets_for_pred_array = [0] + [offset + pad for offset, pad in zip(offsets, pads)]
+            set_slice_data(pred_array, output, offsets_for_pred_array, [fmaps_out] + output_dims)
             if using_data_loader and len(offsets_to_enqueue) > 0:
                 # start adding the next slice to the loader with index_of_shared_dataset
                 new_offsets = offsets_to_enqueue.pop(0)
