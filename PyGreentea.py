@@ -633,7 +633,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             which_dataset = randint(0, len(data_arrays) - 1)
             offsets = []
             for j in range(0, dims):
-                offsets.append(randint(0, data_arrays[0]['data'].shape[j] - (output_dims[j] + input_padding[j])))
+                offsets.append(randint(0, data_arrays[which_dataset]['data'].shape[j] - (output_dims[j] + input_padding[j])))
             offsets = tuple([int(x) for x in offsets])
             # print("offsets = ", offsets)
             print("Pre-populating data loader's dataset #{i}/{size}"
