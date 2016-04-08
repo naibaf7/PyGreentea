@@ -458,35 +458,6 @@ def process(net, data_arrays, shapes=None, net_io=None):
                 print offsets
                 print output.mean()
                 set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
-
-
-        while(True):
-            # print("In while loop. offsets = {o}".format(o=offsets))
-            if not using_data_loader:
-                # process the old-fashioned way
-                # if DEBUG:
-                #     print("Processing offsets ", offsets)
-                # data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
-                # output = process_input_data(net_io, data_slice)
-                # print offsets
-                # print output.mean()
-                # set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
-                pass
-            incremented = False
-            for d in range(0, dims):
-                if (offsets[dims - 1 - d] == out_dims[dims - 1 - d] - output_dims[dims - 1 - d]):
-                    # Reset direction
-                    offsets[dims - 1 - d] = 0
-                else:
-                    # Increment direction
-                    offsets[dims - 1 - d] = min(offsets[dims - 1 - d] + output_dims[dims - 1 - d], out_dims[dims - 1 - d] - output_dims[dims - 1 - d])
-                    incremented = True
-                    break
-
-            # Processed the whole input block
-            if not incremented:
-                break
-        else:
             pred_arrays += [pred_array]
     if using_data_loader:
 
