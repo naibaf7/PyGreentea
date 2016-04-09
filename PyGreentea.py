@@ -400,7 +400,7 @@ def generate_dataset_offsets_for_processing(net, data_arrays, process_borders):
                     maximum_offset = out_dims[dims - 1 - d] - output_dims[dims - 1 - d]
                 if offsets[dims - 1 - d] == maximum_offset:
                     # Reset direction
-                    offsets[dims - 1 - d] = origin[d]
+                    offsets[dims - 1 - d] = origin[dims - 1 - d]
                 else:
                     # Increment direction
                     next_potential_offset = offsets[dims - 1 - d] + output_dims[dims - 1 - d]
