@@ -623,12 +623,8 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     if data_io.data_loader_should_be_used_with(data_arrays):
         using_data_loader = True
         # and initialize queue!
-        if DEBUG:
-            loader_size = 3
-            n_workers = 2
-        else:
-            loader_size = 20
-            n_workers = 10
+        loader_size = 20
+        n_workers = 10
         loader_kwargs = dict(
             size=loader_size,
             datasets=data_arrays,
