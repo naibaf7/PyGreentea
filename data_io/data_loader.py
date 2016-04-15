@@ -4,13 +4,12 @@ import multiprocessing
 import time
 from operator import mul
 from os.path import join
-import warnings
 
 import h5py
 import numpy as np
 
 import PyGreentea as pygt
-from util import get_zero_padded_array_slice
+from dataset_reading import get_numpy_dataset, reopen_dataset
 
 ''' where this will be used:
 * train()
@@ -21,55 +20,26 @@ from util import get_zero_padded_array_slice
 '''
 
 
-def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, output_slice, transform=True):
+def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice,
+                          output_slice, transform=True):
+    start_time = time.time()
     shared_dataset = shared_datasets[index_of_shared]
     original_dataset = datasets[index_of_which_dataset]
-    # print("original_dataset: ", [
-    #     (key,
-    #      type(original_dataset[key]),
-    #      original_dataset[key])
-    #     for key in original_dataset.keys()])
-    dataset_numpy = dict()
-    # load inputs
-    # print("original_dataset['data']: ", original_dataset['data'].shape, original_dataset['data'].dtype)
-    original_data_slice = get_zero_padded_array_slice(original_dataset['data'], input_slice)
-    data_slice = np.array(original_data_slice, dtype=np.float32) / (2. ** 8)
-    if transform:
-        if 'transform' in original_dataset:
-            # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
-            lo, hi = original_dataset['transform']['scale']
-            data_slice = 0.5 + (data_slice-0.5)*np.random.uniform(low=lo,high=hi)
-            lo, hi = original_dataset['transform']['shift']
-            data_slice = data_slice + np.random.uniform(low=lo,high=hi)
-        else:
-            print("WARNING: source data doesn't have 'transform' attribute.")
-    dataset_numpy['data'] = data_slice
-    # load outputs if desired
-    if output_slice is not None:
-        dataset_numpy['components'] = np.array(original_dataset['components'][output_slice])
-        if 'label' in original_dataset:
-            label_slice = (slice(None),) + output_slice
-            dataset_numpy['label'] = np.array(original_dataset['label'][label_slice])
-        else:
-            # compute affinities from components
-            dataset_numpy['label'] = pygt.malis.seg_to_affgraph(dataset_numpy['components'], original_dataset['nhood'])
-            warnings.warn("Computing affinity labels because 'label' wasn't provided in data source.", UserWarning)
-        if 'mask' in original_dataset:
-            dataset_numpy['mask'] = np.array(original_dataset['mask'][output_slice], dtype=np.uint8)
-            if pygt.DEBUG:
-                print("Mask fraction is", np.mean(dataset_numpy['mask']))
-            if np.sum(dataset_numpy['mask']) == 0:
-                return "Outputs are all masked"
-        else:
-            # assume no masking
-            dataset_numpy['mask'] = np.ones_like(dataset_numpy['components'], dtype=np.uint8)
-            warnings.warn("No mask provided. Setting to 1 everywhere.", UserWarning)
+    with reopen_dataset(original_dataset) as opened_dataset:
+        dataset_numpy = get_numpy_dataset(opened_dataset, input_slice, output_slice, transform)
+    if 'mask' in dataset_numpy:
+        if pygt.DEBUG:
+            print("Mask fraction is", np.mean(dataset_numpy['mask']))
+        if np.sum(dataset_numpy['mask']) == 0:
+            return "Not enough unmasked output"
     for key in shared_dataset:
         source_array = dataset_numpy[key].astype(dtypes[key])
         target_mp_array = shared_dataset[key]
-        if pygt.DEBUG:
-            print("dataset_numpy['{0}']: dtype {1} and shape {2}".format(key, source_array.dtype, source_array.shape))
         target_mp_array[:] = source_array.flatten()
+        if pygt.DEBUG:
+            print("dataset_numpy['{0}']: dtype {1}, shape {2}".format(key, source_array.dtype, source_array.shape))
+    if pygt.DEBUG:
+        print("Loading data took", time.time() - start_time, "seconds")
     return
 
 
@@ -179,12 +149,12 @@ class DataLoader(object):
         else:
             borders = tuple([(in_ - out_) / 2 for (in_, out_) in zip(self.input_shape, self.output_shape)])
             output_slice = tuple([slice(offset[i] + borders[i], offset[i] + borders[i] + self.output_shape[i])
-                            for i in range(len(offset))])
+                                  for i in range(len(offset))])
         input_slice = tuple([slice(offset[i], offset[i] + self.input_shape[i])
-                       for i in range(len(offset))])
+                             for i in range(len(offset))])
         dataset_metadata = dict(real=dataset_index, shared=shared_dataset_index, offset=offset)
         def pool_callback(return_value):
-            if return_value == "Outputs are all masked":
+            if return_value == "Not enough unmasked output":
                 if pygt.DEBUG:
                     print("Skipping and replacing 100% masked batch from dataset", dataset_index, "at output_slice", output_slice)
                 return self.start_refreshing_shared_dataset(shared_dataset_index, transform=transform, wait=wait)
