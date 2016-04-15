@@ -584,7 +584,22 @@ def init_testnet(test_net, trained_model=None, test_device=0):
     else:
         return caffe.Net(test_net, trained_model, caffe.TEST)
 
-    
+
+class MakeDatasetOffset(object):
+    def __init__(self, dims, output_dims, input_padding):
+        self.dims = dims
+        self.output_dims = output_dims
+        self.input_padding = input_padding
+
+    def __call__(self, data_array_list):
+        which_dataset = randint(0, len(data_array_list) - 1)
+        offsets = []
+        for j in range(0, self.dims):
+            offsets.append(randint(0, data_array_list[which_dataset]['data'].shape[j] - (self.output_dims[j] + self.input_padding[j])))
+        offsets = tuple([int(x) for x in offsets])
+        return which_dataset, offsets
+
+
 def train(solver, test_net, data_arrays, train_data_arrays, options):
     caffe.select_device(options.train_device, False)
 
@@ -633,12 +648,10 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         print("creating queue with kwargs {}".format(loader_kwargs))
         training_data_loader = data_io.DataLoader(**loader_kwargs)
         # start populating the queue
+
+        make_dataset_offset = MakeDatasetOffset(dims, output_dims, input_padding)
         for i in range(loader_size):
-            which_dataset = randint(0, len(data_arrays) - 1)
-            offsets = []
-            for j in range(0, dims):
-                offsets.append(randint(0, data_arrays[which_dataset]['data'].shape[j] - (output_dims[j] + input_padding[j])))
-            offsets = tuple([int(x) for x in offsets])
+            which_dataset, offsets = make_dataset_offset(data_arrays)
             # print("offsets = ", offsets)
             print("Pre-populating data loader's dataset #{i}/{size}"
                   .format(i=i, size=training_data_loader.size))
