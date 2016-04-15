@@ -638,25 +638,24 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         # and initialize queue!
         loader_size = 20
         n_workers = 10
+        make_dataset_offset = MakeDatasetOffset(dims, output_dims, input_padding)
         loader_kwargs = dict(
             size=loader_size,
             datasets=data_arrays,
             input_shape=tuple(input_dims),
             output_shape=tuple(output_dims),
-            n_workers=n_workers
+            n_workers=n_workers,
+            dataset_offset_func=make_dataset_offset
         )
         print("creating queue with kwargs {}".format(loader_kwargs))
         training_data_loader = data_io.DataLoader(**loader_kwargs)
         # start populating the queue
-
-        make_dataset_offset = MakeDatasetOffset(dims, output_dims, input_padding)
         for i in range(loader_size):
-            which_dataset, offsets = make_dataset_offset(data_arrays)
-            # print("offsets = ", offsets)
-            print("Pre-populating data loader's dataset #{i}/{size}"
-                  .format(i=i, size=training_data_loader.size))
+            if DEBUG:
+                print("Pre-populating data loader's dataset #{i}/{size}"
+                      .format(i=i, size=training_data_loader.size))
             shared_dataset_index, async_result = \
-                training_data_loader.start_refreshing_shared_dataset(i, offsets, which_dataset, wait=True)
+                training_data_loader.start_refreshing_shared_dataset(i)
     else:
         using_data_loader = False
 
@@ -743,24 +742,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         #     return offsets
 
         if using_data_loader:
-            new_dataset_index = randint(0, len(data_arrays) - 1)
-            # offsets = make_offset_for_dataset(new_dataset_index)
-            full_3d_shape_of_new_dataset = data_arrays[new_dataset_index]['data'].shape[-3:]
-            offsets = tuple([
-                int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
-                for j in range(dims)
-                ])
-            # for j in range(0, dims):
-            #     offsets.append(randint(0, dataset['data'].shape[1 + j] - (output_dims[j] + input_padding[j])))
-            # offsets = tuple(offsets)
-            # offsets = (0,0,0)
-            # print("refreshing shared dataset #{i} with dataset #{j} with offset {o}"
-            #       .format(i=index_of_shared_dataset, j=new_dataset_index, o=offsets))
-            training_data_loader.start_refreshing_shared_dataset(
-                shared_dataset_index=index_of_shared_dataset,
-                offset=offsets,
-                dataset_index=new_dataset_index
-            )
+            training_data_loader.start_refreshing_shared_dataset(index_of_shared_dataset)
 
         while gc.collect():
             pass
