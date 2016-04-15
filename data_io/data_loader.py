@@ -1,7 +1,6 @@
 from __future__ import print_function
 
 import multiprocessing
-import os
 import time
 from operator import mul
 from os.path import join
@@ -11,6 +10,7 @@ import h5py
 import numpy as np
 
 import PyGreentea as pygt
+from util import get_zero_padded_array_slice
 
 ''' where this will be used:
 * train()
@@ -33,7 +33,8 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
     dataset_numpy = dict()
     # load inputs
     # print("original_dataset['data']: ", original_dataset['data'].shape, original_dataset['data'].dtype)
-    data_slice = np.array(original_dataset['data'][input_slice], dtype=np.float32) / (2. ** 8)
+    original_data_slice = get_zero_padded_array_slice(original_dataset['data'], input_slice)
+    data_slice = np.array(original_data_slice, dtype=np.float32) / (2. ** 8)
     if transform:
         if 'transform' in original_dataset:
             # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
@@ -72,7 +73,7 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
     return
 
 
-class DatasetQueue(object):
+class DataLoader(object):
     def __init__(self, size, datasets, input_shape, output_shape=None, n_workers=1):
         self.size = size
         self.datasets = datasets
@@ -126,6 +127,7 @@ class DatasetQueue(object):
         return
 
     def _initialize_pool(self):
+        np.random.seed()
         global shared_datasets
         shared_datasets = self.shared_datasets
         global datasets
@@ -220,12 +222,12 @@ if __name__ == '__main__':
             })
         )
     queue_size = 1
-    q = DatasetQueue(queue_size,
-                     datasets=datasets,
-                     input_shape=(80, 80, 80),
-                     output_shape=(60, 60, 60),
-                     n_workers=1
-                     )
+    q = DataLoader(queue_size,
+                   datasets=datasets,
+                   input_shape=(80, 80, 80),
+                   output_shape=(60, 60, 60),
+                   n_workers=1
+                   )
     for j in range(len(datasets)):
         i = 0  # index of shared dataset to use
         shared_dataset_index, async_result = q.start_refreshing_shared_dataset(i, (15, 25, 35), j, wait=True)
@@ -238,9 +240,3 @@ if __name__ == '__main__':
             except:
                 print(key, value)
         print('end   - ********************************************************************************')
-
-
-def data_queue_should_be_used_with(data_arrays):
-    # if 'data' is a numpy array, we assume data_arrays's contents are already in-memory
-    data_is_in_memory = isinstance(data_arrays[0]['data'], np.ndarray)
-    return not data_is_in_memory

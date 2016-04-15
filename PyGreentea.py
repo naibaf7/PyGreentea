@@ -75,7 +75,7 @@ if __name__ == "__main__":
     print(bcolors.OKGREEN + ("==== PYGT: Setup finished ====").ljust(80,"=") + bcolors.ENDC)
     sys.exit(0)
 else: 
-    import data_queue
+    import data_io
 
 
 # Import Caffe
@@ -390,152 +390,162 @@ def get_net_output_specs(net):
     return np.shape(net.blobs['prob'].data)
 
 
-def process(net, data_arrays, shapes=None, net_io=None):    
+def process_input_data(net_io, input_data):
+    net_io.setInputs([input_data])
+    net_io.net.forward()
+    net_outputs = net_io.net.blobs['prob']
+    output = net_outputs.data[0].copy()
+    return output
+
+
+def generate_dataset_offsets_for_processing(net, data_arrays, process_borders):
+    input_dims, output_dims, input_padding = get_spatial_io_dims(net)
+    dims = len(output_dims)
+    dataset_offsets_to_process = dict()
+    for i in range(len(data_arrays)):
+        data_array = data_arrays[i]['data']
+        data_dims = len(data_array.shape)
+        if process_borders:
+            border_widths = [int(math.ceil(pad / float(2))) for pad in input_padding]
+            origin = [-border_width for border_width in border_widths]
+        else:
+            origin = [0 for _ in input_padding]
+        offsets = list(origin)
+        in_dims = []
+        out_dims = []
+        for d in range(dims):
+            in_dims += [data_array.shape[data_dims-dims+d]]
+            out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
+        list_of_offsets_to_process = []
+        while True:
+            offsets_to_append = list(offsets)  # make a copy. important!
+            list_of_offsets_to_process.append(offsets_to_append)
+            incremented = False
+            for d in range(dims):
+                if process_borders:
+                    maximum_offset = in_dims[dims - 1 - d] - output_dims[dims - 1 - d] - border_widths[dims - 1 - d]
+                else:
+                    maximum_offset = out_dims[dims - 1 - d] - output_dims[dims - 1 - d]
+                if offsets[dims - 1 - d] == maximum_offset:
+                    # Reset direction
+                    offsets[dims - 1 - d] = origin[dims - 1 - d]
+                else:
+                    # Increment direction
+                    next_potential_offset = offsets[dims - 1 - d] + output_dims[dims - 1 - d]
+                    offsets[dims - 1 - d] = min(next_potential_offset, maximum_offset)
+                    incremented = True
+                    break
+            if not incremented:
+                break
+        dataset_offsets_to_process[i] = list_of_offsets_to_process
+    return dataset_offsets_to_process
+
+
+def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=True, target_arrays=None):
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
-
     dims = len(output_dims)
-    
-    if (shapes == None):
-        shapes = []
+    if target_arrays:
+        for data_array, target in zip(data_arrays, target_arrays):
+            prediction_shape = (fmaps_out,) + data_array['data'].shape[-dims:]
+            assert prediction_shape == target.shape, \
+                "Target array for dname {} is the wrong shape. {} should be {}"\
+                    .format(data_array['name'], target.shape, prediction_shape)
+        pred_arrays = target_arrays
+    else:
+        pred_arrays = []
+    if shapes is None:
         # Raw data slice input         (n = 1, f = 1, spatial dims)
-        shapes += [[1,fmaps_in] + input_dims]
-        
-    if (net_io == None):
+        shapes = [[1, fmaps_in] + input_dims]
+    if net_io is None:
         net_io = NetInputWrapper(net, shapes)
-            
-    dst = net.blobs['prob']
-    dummy_slice = [0]
-
-    using_queue = data_queue.data_queue_should_be_used_with(data_arrays)
-    dataset_offsets_to_process = dict()
-    if using_queue:
-        processing_data_queue = data_queue.DatasetQueue(
+    using_data_loader = data_io.data_loader_should_be_used_with(data_arrays)
+    if using_data_loader:
+        processing_data_loader = data_io.DataLoader(
             size=5,
             datasets=data_arrays,
             input_shape=tuple(input_dims),
             output_shape=None,  # ignore labels
             n_workers=3
         )
-
     pred_arrays = []
-    for i in range(0, len(data_arrays)):
-        data_array = data_arrays[i]['data']
-        data_dims = len(data_array.shape)
-        
-        offsets = []
-        in_dims = []
-        out_dims = []
-        for d in range(0, dims):
-            offsets += [0]
-            in_dims += [data_array.shape[data_dims-dims+d]]
-            out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
-
-        if not using_queue:
-            pred_array = np.zeros(tuple([fmaps_out] + out_dims))
-
-        list_of_offsets_to_process = []
-
-        while(True):
-            # print("In while loop. offsets = {o}".format(o=offsets))
-            if using_queue:
-                # print("Appending offsets value {o}".format(o=offsets))
-                offsets_to_append = list(offsets)  # make a copy. important!
-                list_of_offsets_to_process.append(offsets_to_append)
-                # print("Just appended. list_of_offsets_to_process is now ",list_of_offsets_to_process)
-            else:
-                # process the old-fashioned way
-                if DEBUG:
-                    print("Processing offsets ", offsets)
-                data_slice = slice_data(data_array, [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
-                net_io.setInputs([data_slice])
-                net.forward()
-                output = dst.data[0].copy()
-                print offsets
-                print output.mean()
-                set_slice_data(pred_array, output, [0] + offsets, [fmaps_out] + output_dims)
-
-            incremented = False
-            for d in range(0, dims):
-                if (offsets[dims - 1 - d] == out_dims[dims - 1 - d] - output_dims[dims - 1 - d]):
-                    # Reset direction
-                    offsets[dims - 1 - d] = 0
-                else:
-                    # Increment direction
-                    offsets[dims - 1 - d] = min(offsets[dims - 1 - d] + output_dims[dims - 1 - d], out_dims[dims - 1 - d] - output_dims[dims - 1 - d])
-                    incremented = True
-                    break
-
-            # Processed the whole input block
-            if not incremented:
-                break
-
-        if using_queue:
-            dataset_offsets_to_process[i] = list_of_offsets_to_process
+    dataset_offsets_to_process = generate_dataset_offsets_for_processing(
+        net, data_arrays, process_borders=zero_pad_source_data)
+    for source_dataset_index in dataset_offsets_to_process:
+        list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
+        if DEBUG:
+            print("source_dataset_index = ", source_dataset_index)
+            print("Processing source volume #{i} with offsets list {o}"
+                  .format(i=source_dataset_index, o=list_of_offsets_to_process))
+        # make a copy of that list for enqueueing purposes
+        offsets_to_enqueue = list(list_of_offsets_to_process)
+        data_array = data_arrays[source_dataset_index]['data']
+        if target_arrays:
+            pred_array = target_arrays[source_dataset_index]
         else:
-            pred_arrays += [pred_array]
-
-    if using_queue:
-        for source_dataset_index in dataset_offsets_to_process:
-            list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
-            if DEBUG:
-                print("source_dataset_index = ",source_dataset_index)
-                print("Processing source volume #{i} with offsets list {o}"
-                      .format(i=source_dataset_index, o=list_of_offsets_to_process))
-            # make a copy of that list for enqueueing purposes
-            offsets_to_enqueue = list(list_of_offsets_to_process)
-            data_array = data_arrays[source_dataset_index]['data']
-            data_dims = len(data_array.shape)
-            in_dims = []
-            out_dims = []
-            for d in range(0, dims):
-                in_dims += [data_array.shape[data_dims-dims+d]]
-                out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
-            pred_array = np.zeros(tuple([fmaps_out] + out_dims))
+            prediction_shape = (fmaps_out,) + data_array.shape[-dims:]
+            pred_array = np.zeros(shape=prediction_shape, dtype=np.float32)
+        if using_data_loader:
             # start pre-populating queue
-            for shared_dataset_index in range(min(processing_data_queue.size, len(list_of_offsets_to_process))):
+            for shared_dataset_index in range(min(processing_data_loader.size, len(list_of_offsets_to_process))):
                 # fill shared-memory datasets with an offset
                 offsets = offsets_to_enqueue.pop(0)
                 offsets = tuple([int(o) for o in offsets])
-                # print("Pre-populating processing queue with data at offset {}".format(offsets))
-                print("Pre-populating data loader's dataset #{i}/{size}"
-                      .format(i=shared_dataset_index, size=processing_data_queue.size))
-                shared_dataset_index, async_result = processing_data_queue.start_refreshing_shared_dataset(
+                # print("Pre-populating processing data loader with data at offset {}".format(offsets))
+                print("Pre-populating data loader's dataset #{i}/{size} with dataset #{d} and offset {o}"
+                      .format(i=shared_dataset_index, size=processing_data_loader.size,
+                              d=source_dataset_index, o=offsets))
+                shared_dataset_index, async_result = processing_data_loader.start_refreshing_shared_dataset(
                     shared_dataset_index,
                     offsets,
                     source_dataset_index,
                     transform=False,
                     wait=True
                 )
-            # process each offset
-            for i_offsets in range(len(list_of_offsets_to_process)):
-                dataset, index_of_shared_dataset = processing_data_queue.get_dataset()
+        # process each offset
+        for i_offsets in range(len(list_of_offsets_to_process)):
+            if using_data_loader:
+                dataset, index_of_shared_dataset = processing_data_loader.get_dataset()
+                offsets = list(dataset['offset'])  # convert tuple to list
                 data_slice = dataset['data']
-                assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
                 if DEBUG:
-                    print("Processing next dataset in processing queue, which has offset {o}". format(o=dataset['offset']))
-                # process the chunk
-                net_io.setInputs([data_slice])
-                net.forward()
-                output = dst.data[0].copy()
-                offsets_of_this_batch = list(dataset['offset'])  # convert tuple to list
-                print offsets_of_this_batch
-                print output.mean()
-                set_slice_data(pred_array, output, [0] + offsets_of_this_batch, [fmaps_out] + output_dims)
-                if len(offsets_to_enqueue) > 0:
-                    # start adding the next slice to the queue with index_of_shared_dataset
-                    new_offsets = offsets_to_enqueue.pop(0)
-                    processing_data_queue.start_refreshing_shared_dataset(
-                        index_of_shared_dataset,
-                        new_offsets,
-                        source_dataset_index,
-                        transform=False
+                    print("Processing next dataset in processing data loader, which has offset {o}"
+                          .format(o=dataset['offset']))
+            else:
+                offsets = list_of_offsets_to_process[i_offsets]
+                if zero_pad_source_data:
+                    data_slice = data_io.util.get_zero_padded_slice_from_array_by_offset(
+                        array=data_array,
+                        origin=[0] + offsets,
+                        shape=[fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
                     )
-            pred_arrays += [pred_array]
-            
+                else:
+                    data_slice = slice_data(
+                        data_array,
+                        [0] + offsets,
+                        [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
+                    )
+            # process the chunk
+            output = process_input_data(net_io, data_slice)
+            print(offsets)
+            print(output.mean())
+            pads = [int(math.ceil(pad / float(2))) for pad in input_padding]
+            offsets_for_pred_array = [0] + [offset + pad for offset, pad in zip(offsets, pads)]
+            set_slice_data(pred_array, output, offsets_for_pred_array, [fmaps_out] + output_dims)
+            if using_data_loader and len(offsets_to_enqueue) > 0:
+                # start adding the next slice to the loader with index_of_shared_dataset
+                new_offsets = offsets_to_enqueue.pop(0)
+                processing_data_loader.start_refreshing_shared_dataset(
+                    index_of_shared_dataset,
+                    new_offsets,
+                    source_dataset_index,
+                    transform=False
+                )
+        if not target_arrays:
+            pred_arrays.append(pred_array)
     return pred_arrays
-      
-        
+
+
     # Wrapper around a networks 
 class TestNetEvaluator:
     
@@ -638,26 +648,22 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
     net_io = NetInputWrapper(net, shapes)
 
-    if data_queue.data_queue_should_be_used_with(data_arrays):
-        using_asynchronous_queue = True
+    if data_io.data_loader_should_be_used_with(data_arrays):
+        using_data_loader = True
         # and initialize queue!
-        if DEBUG:
-            queue_size = 3
-            n_workers = 2
-        else:
-            queue_size = 20
-            n_workers = 10
-        queue_initialization_kwargs = dict(
-            size=queue_size,
+        loader_size = 20
+        n_workers = 10
+        loader_kwargs = dict(
+            size=loader_size,
             datasets=data_arrays,
             input_shape=tuple(input_dims),
             output_shape=tuple(output_dims),
             n_workers=n_workers
         )
-        print("creating queue with kwargs {}".format(queue_initialization_kwargs))
-        training_data_queue = data_queue.DatasetQueue(**queue_initialization_kwargs)
+        print("creating queue with kwargs {}".format(loader_kwargs))
+        training_data_loader = data_io.DataLoader(**loader_kwargs)
         # start populating the queue
-        for i in range(queue_size):
+        for i in range(loader_size):
             which_dataset = randint(0, len(data_arrays) - 1)
             offsets = []
             for j in range(0, dims):
@@ -665,11 +671,11 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             offsets = tuple([int(x) for x in offsets])
             # print("offsets = ", offsets)
             print("Pre-populating data loader's dataset #{i}/{size}"
-                  .format(i=i, size=training_data_queue.size))
+                  .format(i=i, size=training_data_loader.size))
             shared_dataset_index, async_result = \
-                training_data_queue.start_refreshing_shared_dataset(i, offsets, which_dataset, wait=True)
+                training_data_loader.start_refreshing_shared_dataset(i, offsets, which_dataset, wait=True)
     else:
-        using_asynchronous_queue = False
+        using_data_loader = False
 
     # Loop from current iteration to last iteration
     time_counter = 0
@@ -684,8 +690,8 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
         start = time.time()
 
-        if not using_asynchronous_queue:
-            print("Using data_arrays directly. No queue.")
+        if not using_data_loader:
+            print("Using data_arrays directly. No data loader.")
             # First pick the dataset_index to train with
             dataset_index = randint(0, len(data_arrays) - 1)
             dataset = data_arrays[dataset_index]
@@ -705,13 +711,13 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 data_slice = data_slice + np.random.uniform(low=lo,high=hi)
                 # print('Post:',(data_slice.min(),data_slice.mean(),data_slice.max()))
         else:
-            dataset, index_of_shared_dataset = training_data_queue.get_dataset()
+            dataset, index_of_shared_dataset = training_data_loader.get_dataset()
             data_slice = dataset['data']
             assert data_slice.shape == (fmaps_in,) + tuple(input_dims)
             label_slice = dataset['label']
             assert label_slice.shape == (fmaps_out,) + tuple(output_dims)
             if DEBUG:
-                print("Training with next dataset in queue, which has offset {o}". format(o=dataset['offset']))
+                print("Training with next dataset in data loader, which has offset {o}". format(o=dataset['offset']))
             mask_slice = None
             if 'mask' in dataset:
                 mask_slice = dataset['mask']
@@ -747,8 +753,15 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         loss = solver.step(1)
         # sanity_check_net_blobs(net)
 
-        if using_asynchronous_queue:
+        # def make_offset_for_dataset(source_dataset_index):
+        #     full_3d_shape_of_new_dataset = data_arrays[source_dataset_index]['data'].shape[-3:]
+        #     offsets = tuple([int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
+        #                      for j in range(dims)])
+        #     return offsets
+
+        if using_data_loader:
             new_dataset_index = randint(0, len(data_arrays) - 1)
+            # offsets = make_offset_for_dataset(new_dataset_index)
             full_3d_shape_of_new_dataset = data_arrays[new_dataset_index]['data'].shape[-3:]
             offsets = tuple([
                 int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
@@ -760,7 +773,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             # offsets = (0,0,0)
             # print("refreshing shared dataset #{i} with dataset #{j} with offset {o}"
             #       .format(i=index_of_shared_dataset, j=new_dataset_index, o=offsets))
-            training_data_queue.start_refreshing_shared_dataset(
+            training_data_loader.start_refreshing_shared_dataset(
                 shared_dataset_index=index_of_shared_dataset,
                 offset=offsets,
                 dataset_index=new_dataset_index
