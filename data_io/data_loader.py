@@ -22,7 +22,6 @@ from util import get_zero_padded_array_slice
 
 
 def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, output_slice, transform=True):
-    # print("in process id {}".format(os.getpid()))
     shared_dataset = shared_datasets[index_of_shared]
     original_dataset = datasets[index_of_which_dataset]
     # print("original_dataset: ", [
@@ -57,6 +56,10 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
             warnings.warn("Computing affinity labels because 'label' wasn't provided in data source.", UserWarning)
         if 'mask' in original_dataset:
             dataset_numpy['mask'] = np.array(original_dataset['mask'][output_slice], dtype=np.uint8)
+            if pygt.DEBUG:
+                print("Mask fraction is", np.mean(dataset_numpy['mask']))
+            if np.sum(dataset_numpy['mask']) == 0:
+                return "Outputs are all masked"
         else:
             # assume no masking
             dataset_numpy['mask'] = np.ones_like(dataset_numpy['components'], dtype=np.uint8)
@@ -66,20 +69,18 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
         target_mp_array = shared_dataset[key]
         if pygt.DEBUG:
             print("dataset_numpy['{0}']: dtype {1} and shape {2}".format(key, source_array.dtype, source_array.shape))
-        # print("dataset_numpy['{0}'].flatten().size: {1}".format(key, source_array.flatten().size))
-        # print(dir(target_mp_array))
-        # print(target_mp_array._length_, target_mp_array._objects, target_mp_array._type_, target_mp_array._b_base_)
         target_mp_array[:] = source_array.flatten()
     return
 
 
 class DataLoader(object):
-    def __init__(self, size, datasets, input_shape, output_shape=None, n_workers=1):
+    def __init__(self, size, datasets, input_shape, output_shape=None, n_workers=1, dataset_offset_func=None):
         self.size = size
         self.datasets = datasets
         self.input_shape = input_shape
         self.outputs_are_ignored = output_shape is None
         self.output_shape = output_shape or (0, 0, 0)
+        self.make_dataset_offset = dataset_offset_func
         self._list = list()
         self.shapes = {
             'data': (1,) + self.input_shape,
@@ -95,7 +96,6 @@ class DataLoader(object):
         }
         self.keys_to_ignore = []
         if self.outputs_are_ignored:
-            # then ignore all outputs. (e.g. for test processing)
             self.keys_to_ignore = ['label', 'components', 'mask']
             for output_key in self.keys_to_ignore:
                 self.dtypes.pop(output_key)
@@ -148,12 +148,6 @@ class DataLoader(object):
         shared_dataset = self.shared_datasets[index_of_shared_dataset]
         given_dataset = self.datasets[index_of_given_dataset]
         for key in shared_dataset:
-            # print("loading shared_dataset['{}']".format(key))
-            # print("{}'s desired shape: {}".format(key, self.shapes[key]))
-            # if key is 'data':
-            #     dtype = np.float32
-            # else:
-            #     dtype = np.int32
             dtype = self.dtypes[key]
             new_dataset[key] = np.frombuffer(shared_dataset[key], dtype)
             if pygt.DEBUG:
@@ -162,7 +156,6 @@ class DataLoader(object):
             if copy:
                 new_dataset[key] = new_dataset[key].copy()
         for key in given_dataset:
-            # print("processing given_dataset['{}']".format(key))
             if key in shared_dataset or key in self.keys_to_ignore:
                 # we already loaded it, or we want to ignore it
                 # print("ignoring given_dataset['{key}']".format(key=key))
@@ -172,22 +165,29 @@ class DataLoader(object):
                 new_dataset[key] = given_dataset[key]
         return new_dataset, index_of_shared_dataset
 
-    def start_refreshing_shared_dataset(self, shared_dataset_index, offset, dataset_index, transform=True, wait=False):
+    def start_refreshing_shared_dataset(self, shared_dataset_index, offset=None, dataset_index=None, transform=True,
+                                        wait=False):
+        if offset is None or dataset_index is None:
+            if self.make_dataset_offset is None:
+                raise ValueError("Data loader wasn't given offset & which dataset to refresh, "
+                                 "but can't make offsets itself.")
+            dataset_index, offset = self.make_dataset_offset(self.datasets)
+            if pygt.DEBUG:
+                print("DataLoader decided to load dataset #", dataset_index, "at offset", offset)
         if self.outputs_are_ignored:
             output_slice = None
         else:
             borders = tuple([(in_ - out_) / 2 for (in_, out_) in zip(self.input_shape, self.output_shape)])
-            # print("borders: ", borders)
             output_slice = tuple([slice(offset[i] + borders[i], offset[i] + borders[i] + self.output_shape[i])
                             for i in range(len(offset))])
-        # print("output_slice: {}".format(output_slice))
         input_slice = tuple([slice(offset[i], offset[i] + self.input_shape[i])
                        for i in range(len(offset))])
-        # print("input_slice: {}".format(input_slice))
-
         dataset_metadata = dict(real=dataset_index, shared=shared_dataset_index, offset=offset)
-        def pool_callback(*args, **kwargs):
-            # print(args, kwargs)
+        def pool_callback(return_value):
+            if return_value == "Outputs are all masked":
+                if pygt.DEBUG:
+                    print("Skipping and replacing 100% masked batch from dataset", dataset_index, "at output_slice", output_slice)
+                return self.start_refreshing_shared_dataset(shared_dataset_index, transform=transform, wait=wait)
             return self.ready_shared_datasets.append(dataset_metadata)
         async_result = self.pool.apply_async(
             func=update_shared_dataset,
@@ -203,9 +203,12 @@ class DataLoader(object):
         if wait:
             final_result = async_result.get()
             if final_result is not None:
-                # probably an error
-                print(final_result)
+                print(final_result)  # probably an error
         return shared_dataset_index, async_result
+    
+    def destroy(self):
+        self.pool.terminate()
+        return
 
 
 if __name__ == '__main__':

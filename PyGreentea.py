@@ -384,8 +384,8 @@ def get_fmap_io_dims(net):
     output_fmaps = list(shapes[1][1])[1]
     
     return input_fmaps, output_fmaps
-    
-    
+
+
 def get_net_output_specs(net):
     return np.shape(net.blobs['prob'].data)
 
@@ -445,15 +445,14 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
     dims = len(output_dims)
-    if target_arrays:
+    if target_arrays is not None:
+        assert len(data_arrays) == len(target_arrays)
         for data_array, target in zip(data_arrays, target_arrays):
             prediction_shape = (fmaps_out,) + data_array['data'].shape[-dims:]
             assert prediction_shape == target.shape, \
                 "Target array for dname {} is the wrong shape. {} should be {}"\
                     .format(data_array['name'], target.shape, prediction_shape)
-        pred_arrays = target_arrays
-    else:
-        pred_arrays = []
+    pred_arrays = target_arrays or []
     if shapes is None:
         # Raw data slice input         (n = 1, f = 1, spatial dims)
         shapes = [[1, fmaps_in] + input_dims]
@@ -468,7 +467,6 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
             output_shape=None,  # ignore labels
             n_workers=3
         )
-    pred_arrays = []
     dataset_offsets_to_process = generate_dataset_offsets_for_processing(
         net, data_arrays, process_borders=zero_pad_source_data)
     for source_dataset_index in dataset_offsets_to_process:
@@ -480,7 +478,7 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
         # make a copy of that list for enqueueing purposes
         offsets_to_enqueue = list(list_of_offsets_to_process)
         data_array = data_arrays[source_dataset_index]['data']
-        if target_arrays:
+        if target_arrays is not None:
             pred_array = target_arrays[source_dataset_index]
         else:
             prediction_shape = (fmaps_out,) + data_array.shape[-dims:]
@@ -541,53 +539,54 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
                     source_dataset_index,
                     transform=False
                 )
-        if not target_arrays:
-            pred_arrays.append(pred_array)
+        pred_arrays.append(pred_array)
+        if using_data_loader:
+            processing_data_loader.destroy()
     return pred_arrays
 
 
-    # Wrapper around a networks 
-class TestNetEvaluator:
-    
+class TestNetEvaluator(object):
     def __init__(self, test_net, train_net, data_arrays, options):
         self.options = options
         self.test_net = test_net
         self.train_net = train_net
-        self.data_arrays = data_arrays
+        self.datasets = data_arrays
         self.thread = None
-        
         input_dims, output_dims, input_padding = get_spatial_io_dims(self.test_net)
-        fmaps_in, fmaps_out = get_fmap_io_dims(self.test_net)       
-        self.shapes = []
-        self.shapes += [[1,fmaps_in] + input_dims]
+        fmaps_in, fmaps_out = get_fmap_io_dims(self.test_net)
+        self.shapes = [[1, fmaps_in] + input_dims]
+        self.fmaps_out = fmaps_out
+        self.n_data_dims = len(output_dims)
         self.net_io = NetInputWrapper(self.test_net, self.shapes)
-            
+
     def run_test(self, iteration):
         caffe.select_device(self.options.test_device, False)
-        pred_arrays = process(self.test_net, self.data_arrays, shapes=self.shapes, net_io=self.net_io)
-
-        for i in range(0, len(pred_arrays)):
-            if ('name' in self.data_arrays[i]):
-                h5file = self.data_arrays[i]['name'] + '.h5'
+        for dataset_i in range(len(self.datasets)):
+            dataset_to_process = self.datasets[dataset_i]
+            if 'name' in dataset_to_process:
+                h5_file_name = dataset_to_process['name'] + '.h5'
             else:
-                h5file = 'test_out_' + repr(i) + '.h5'
-            outhdf5 = h5py.File(h5file, 'w')
-            outdset = outhdf5.create_dataset('main', pred_arrays[i].shape, np.float32, data=pred_arrays[i])
-            # outdset.attrs['nhood'] = np.string_('-1,0,0;0,-1,0;0,0,-1')
-            outhdf5.close()
-            print("Just saved {}".format(h5file))
-        
+                h5_file_name = 'test_out_' + repr(dataset_i) + '.h5'
+            temp_file_name = h5_file_name + '.inprogress'
+            with h5py.File(temp_file_name, 'w') as h5_file:
+                prediction_shape = (self.fmaps_out,) + dataset_to_process['data'].shape[-self.n_data_dims:]
+                target_array = h5_file.create_dataset(name='main', shape=prediction_shape, dtype=np.float32)
+                output_arrays = process(self.test_net,
+                                        data_arrays=[dataset_to_process],
+                                        shapes=self.shapes,
+                                        net_io=self.net_io,
+                                        target_arrays=[target_array])
+            os.rename(temp_file_name, h5_file_name)
+            print("Just saved {}".format(h5_file_name))
 
     def evaluate(self, iteration):
         # Test/wait if last test is done
-        if not(self.thread is None):
+        if self.thread is not None:
             try:
                 self.thread.join()
             except:
                 self.thread = None
-        # Weight transfer
         net_weight_transfer(self.test_net, self.train_net)
-        # Run test
         if USE_ONE_THREAD:
             self.run_test(iteration)
         else:
@@ -598,28 +597,42 @@ class TestNetEvaluator:
 def init_solver(solver_config, options):
     caffe.set_mode_gpu()
     caffe.select_device(options.train_device, False)
-   
     solver_inst = caffe.get_solver(solver_config)
-    
-    if (options.test_net == None):
-        return (solver_inst, None)
+    if options.test_net is None:
+        return solver_inst, None
     else:
-        return (solver_inst, init_testnet(options.test_net, test_device=options.test_device))
-    
+        return solver_inst, init_testnet(options.test_net, test_device=options.test_device)
+
+
 def init_testnet(test_net, trained_model=None, test_device=0):
     caffe.set_mode_gpu()
     caffe.select_device(test_device, False)
-    if(trained_model == None):
+    if trained_model is None:
         return caffe.Net(test_net, caffe.TEST)
     else:
         return caffe.Net(test_net, trained_model, caffe.TEST)
 
-    
+
+class MakeDatasetOffset(object):
+    def __init__(self, dims, output_dims, input_padding):
+        self.dims = dims
+        self.output_dims = output_dims
+        self.input_padding = input_padding
+
+    def __call__(self, data_array_list):
+        which_dataset = randint(0, len(data_array_list) - 1)
+        offsets = []
+        for j in range(0, self.dims):
+            offsets.append(randint(0, data_array_list[which_dataset]['data'].shape[j] - (self.output_dims[j] + self.input_padding[j])))
+        offsets = tuple([int(x) for x in offsets])
+        return which_dataset, offsets
+
+
 def train(solver, test_net, data_arrays, train_data_arrays, options):
     caffe.select_device(options.train_device, False)
-    
+
     net = solver.net
-    
+
     test_eval = None
     if (options.test_net != None):
         test_eval = TestNetEvaluator(test_net, net, train_data_arrays, options)
@@ -653,27 +666,24 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         # and initialize queue!
         loader_size = 20
         n_workers = 10
+        make_dataset_offset = MakeDatasetOffset(dims, output_dims, input_padding)
         loader_kwargs = dict(
             size=loader_size,
             datasets=data_arrays,
             input_shape=tuple(input_dims),
             output_shape=tuple(output_dims),
-            n_workers=n_workers
+            n_workers=n_workers,
+            dataset_offset_func=make_dataset_offset
         )
         print("creating queue with kwargs {}".format(loader_kwargs))
         training_data_loader = data_io.DataLoader(**loader_kwargs)
         # start populating the queue
         for i in range(loader_size):
-            which_dataset = randint(0, len(data_arrays) - 1)
-            offsets = []
-            for j in range(0, dims):
-                offsets.append(randint(0, data_arrays[which_dataset]['data'].shape[j] - (output_dims[j] + input_padding[j])))
-            offsets = tuple([int(x) for x in offsets])
-            # print("offsets = ", offsets)
-            print("Pre-populating data loader's dataset #{i}/{size}"
-                  .format(i=i, size=training_data_loader.size))
+            if DEBUG:
+                print("Pre-populating data loader's dataset #{i}/{size}"
+                      .format(i=i, size=training_data_loader.size))
             shared_dataset_index, async_result = \
-                training_data_loader.start_refreshing_shared_dataset(i, offsets, which_dataset, wait=True)
+                training_data_loader.start_refreshing_shared_dataset(i)
     else:
         using_data_loader = False
 
@@ -760,24 +770,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         #     return offsets
 
         if using_data_loader:
-            new_dataset_index = randint(0, len(data_arrays) - 1)
-            # offsets = make_offset_for_dataset(new_dataset_index)
-            full_3d_shape_of_new_dataset = data_arrays[new_dataset_index]['data'].shape[-3:]
-            offsets = tuple([
-                int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
-                for j in range(dims)
-                ])
-            # for j in range(0, dims):
-            #     offsets.append(randint(0, dataset['data'].shape[1 + j] - (output_dims[j] + input_padding[j])))
-            # offsets = tuple(offsets)
-            # offsets = (0,0,0)
-            # print("refreshing shared dataset #{i} with dataset #{j} with offset {o}"
-            #       .format(i=index_of_shared_dataset, j=new_dataset_index, o=offsets))
-            training_data_loader.start_refreshing_shared_dataset(
-                shared_dataset_index=index_of_shared_dataset,
-                offset=offsets,
-                dataset_index=new_dataset_index
-            )
+            training_data_loader.start_refreshing_shared_dataset(index_of_shared_dataset)
 
         while gc.collect():
             pass
@@ -797,5 +790,6 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         total_time += time.time() - start
         if DEBUG:
             print("taking {} on average per iteration".format(total_time/time_counter))
-
-
+    
+    if using_data_loader:
+        training_data_loader.destroy()
