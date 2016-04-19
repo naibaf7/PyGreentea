@@ -206,6 +206,10 @@ class DataLoader(object):
                 # probably an error
                 print(final_result)
         return shared_dataset_index, async_result
+    
+    def destroy(self):
+        self.pool.terminate()
+        return
 
 
 if __name__ == '__main__':

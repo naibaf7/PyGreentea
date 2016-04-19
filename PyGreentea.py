@@ -512,6 +512,8 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
                     transform=False
                 )
         pred_arrays.append(pred_array)
+        if using_data_loader:
+            processing_data_loader.destroy()
     return pred_arrays
 
 
@@ -765,5 +767,6 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         total_time += time.time() - start
         if DEBUG:
             print("taking {} on average per iteration".format(total_time/time_counter))
-
-
+    
+    if using_data_loader:
+        training_data_loader.destroy()
