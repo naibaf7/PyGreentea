@@ -22,7 +22,6 @@ from util import get_zero_padded_array_slice
 
 
 def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, output_slice, transform=True):
-    # print("in process id {}".format(os.getpid()))
     shared_dataset = shared_datasets[index_of_shared]
     original_dataset = datasets[index_of_which_dataset]
     # print("original_dataset: ", [
@@ -57,6 +56,10 @@ def update_shared_dataset(index_of_shared, index_of_which_dataset, input_slice, 
             warnings.warn("Computing affinity labels because 'label' wasn't provided in data source.", UserWarning)
         if 'mask' in original_dataset:
             dataset_numpy['mask'] = np.array(original_dataset['mask'][output_slice], dtype=np.uint8)
+            if pygt.DEBUG:
+                print("Mask fraction is", np.mean(dataset_numpy['mask']))
+            if np.sum(dataset_numpy['mask']) == 0:
+                return "Outputs are all masked"
         else:
             # assume no masking
             dataset_numpy['mask'] = np.ones_like(dataset_numpy['components'], dtype=np.uint8)
@@ -180,8 +183,11 @@ class DataLoader(object):
         input_slice = tuple([slice(offset[i], offset[i] + self.input_shape[i])
                        for i in range(len(offset))])
         dataset_metadata = dict(real=dataset_index, shared=shared_dataset_index, offset=offset)
-        def pool_callback(*args, **kwargs):
-            # print(args, kwargs)
+        def pool_callback(return_value):
+            if return_value == "Outputs are all masked":
+                if pygt.DEBUG:
+                    print("Skipping and replacing 100% masked batch from dataset", dataset_index, "at output_slice", output_slice)
+                return self.start_refreshing_shared_dataset(shared_dataset_index, transform=transform, wait=wait)
             return self.ready_shared_datasets.append(dataset_metadata)
         async_result = self.pool.apply_async(
             func=update_shared_dataset,
