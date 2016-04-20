@@ -660,18 +660,13 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         using_data_loader = False
 
     # Loop from current iteration to last iteration
-    time_counter = 0
-    total_time = 0
     for i in range(solver.iter, solver.max_iter):
-        
+        start = time.time()
         if (options.test_net != None and i % options.test_interval == 1):
             test_eval.evaluate(i)
             if USE_ONE_THREAD:
                 # after testing finishes, switch back to the training device
                 caffe.select_device(options.train_device, False)
-
-        start = time.time()
-
         if not using_data_loader:
             print("Using data_arrays directly. No data loader.")
             # First pick the dataset_index to train with
@@ -746,22 +741,14 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
 
         while gc.collect():
             pass
-
-
+        time_of_iteration = time.time() - start
         if options.loss_function == 'euclid' or options.loss_function == 'euclid_aniso':
-            print("[Iter %i] Loss: %f, frac_pos=%f, w_pos=%f" % (i,loss,frac_pos,w_pos))
+            print("[Iter %i] Time: %05.2fs Loss: %f, frac_pos=%f, w_pos=%f" % (i, time_of_iteration, loss, frac_pos, w_pos))
         else:
-            print("[Iter %i] Loss: %f" % (i,loss))
-        # TODO: Store losses to file
+            print("[Iter %i] Time: %05.2fs Loss: %f" % (i, time_of_iteration, loss))
         losses += [loss]
 
         if hasattr(options, 'loss_snapshot') and ((i % options.loss_snapshot) == 0):
             io.savemat('loss.mat',{'loss':losses})
-
-        time_counter += 1
-        total_time += time.time() - start
-        if DEBUG:
-            print("taking {} on average per iteration".format(total_time/time_counter))
-    
     if using_data_loader:
         training_data_loader.destroy()
