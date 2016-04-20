@@ -678,15 +678,19 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             # These are the raw data elements
             data_slice = slice_data(dataset['data'], [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
             label_slice = slice_data(dataset['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
-            # transform the input
-            # this code assumes that the original input pixel values are scaled between (0,1)
             if 'transform' in dataset:
-                # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+                # transform the input
+                # assumes that the original input pixel values are scaled between (0,1)
+                if DEBUG:
+                    print('Training data min/mean/max after transform:', 
+                          np.min(data_slice), np.mean(data_slice), np.max(data_slice))
                 lo, hi = dataset['transform']['scale']
-                data_slice = 0.5 + (data_slice-0.5)*np.random.uniform(low=lo,high=hi)
+                data_slice = 0.5 + (data_slice - 0.5) * np.random.uniform(low=lo, high=hi)
                 lo, hi = dataset['transform']['shift']
-                data_slice = data_slice + np.random.uniform(low=lo,high=hi)
-                # print('Post:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+                data_slice = data_slice + np.random.uniform(low=lo, high=hi)
+                if DEBUG:
+                    print('Training data min/mean/max after transform:', 
+                          np.min(data_slice), np.mean(data_slice), np.max(data_slice))
         else:
             dataset, index_of_shared_dataset = training_data_loader.get_dataset()
             data_slice = dataset['data']
@@ -698,17 +702,14 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             mask_slice = None
             if 'mask' in dataset:
                 mask_slice = dataset['mask']
-
         if DEBUG:
             print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, "
                   "data_slice.max() {}".format(data_slice.min(), data_slice.mean(), data_slice.max()))
-
         if options.loss_function == 'malis':
-            components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
+            components_slice, ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
             # Also recomputing the corresponding labels (connected components)
             net_io.setInputs([data_slice, label_slice, components_slice, data_arrays[0]['nhood']])
-            
-        if options.loss_function == 'euclid':
+        elif options.loss_function == 'euclid':
             label_slice_mean = label_slice.mean()
             if 'mask' in dataset:
                 label_slice = label_slice * mask_slice
@@ -721,24 +722,12 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 w_neg = w_neg / (2.0 * (1.0 - frac_pos))
             error_scale_slice = scale_errors(label_slice, w_neg, w_pos)
             net_io.setInputs([data_slice, label_slice, error_scale_slice])
-
-        if options.loss_function == 'softmax':
+        elif options.loss_function == 'softmax':
             # These are the affinity edge values
             net_io.setInputs([data_slice, label_slice])
-        
-        # Single step
-        loss = solver.step(1)
-        # sanity_check_net_blobs(net)
-
-        # def make_offset_for_dataset(source_dataset_index):
-        #     full_3d_shape_of_new_dataset = data_arrays[source_dataset_index]['data'].shape[-3:]
-        #     offsets = tuple([int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
-        #                      for j in range(dims)])
-        #     return offsets
-
+        loss = solver.step(1)  # Single step
         if using_data_loader:
             training_data_loader.start_refreshing_shared_dataset(index_of_shared_dataset)
-
         while gc.collect():
             pass
         time_of_iteration = time.time() - start
@@ -747,7 +736,6 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         else:
             print("[Iter %i] Time: %05.2fs Loss: %f" % (i, time_of_iteration, loss))
         losses += [loss]
-
         if hasattr(options, 'loss_snapshot') and ((i % options.loss_snapshot) == 0):
             io.savemat('loss.mat',{'loss':losses})
     if using_data_loader:
