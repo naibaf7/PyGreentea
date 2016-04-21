@@ -1,6 +1,9 @@
-import os, sys, inspect
+import inspect
 import multiprocessing
+import os
 import platform
+import sys
+
 
 def setup_paths(caffe_path, malis_path):
     cmd_folder = os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0]))

@@ -1,13 +1,18 @@
 from __future__ import print_function
+
+import copy
+import math
+
+# Are these needed? They aren't used in this file.
 import os, sys, inspect
 import h5py
 import numpy as np
 import matplotlib
 import random
-import math, copy
 import multiprocessing
 from Crypto.Random.random import randint
 from functools import partial
+
 
 # Import pycaffe
 import caffe

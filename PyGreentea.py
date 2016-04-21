@@ -1,13 +1,17 @@
 from __future__ import print_function
 
-import os, sys, inspect, gc
+import gc
+import inspect
+import math
+import os
+import sys
+import threading
+import time
+
 import h5py
 import numpy as np
-from scipy import io
-import math
-import threading
 import png
-import time
+from scipy import io
 
 
 # set this to True after importing this module to prevent multithreading
