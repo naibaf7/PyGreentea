@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os, sys, inspect, gc
 import h5py
 import numpy as np
@@ -141,7 +143,7 @@ def normalize(dataset, newmin=-1, newmax=1):
 
 def getSolverStates(prefix):
     files = [f for f in os.listdir('.') if os.path.isfile(f)]
-    print files
+    print(files)
     solverstates = []
     for file in files:
         if(prefix+'_iter_' in file and '.solverstate' in file):
@@ -150,7 +152,7 @@ def getSolverStates(prefix):
             
 def getCaffeModels(prefix):
     files = [f for f in os.listdir('.') if os.path.isfile(f)]
-    print files
+    print(files)
     caffemodels = []
     for file in files:
         if(prefix+'_iter_' in file and '.caffemodel' in file):
@@ -288,7 +290,7 @@ def sanity_check_net_blobs(net):
     for key in net.blobs.keys():
         dst = net.blobs[key]
         data = np.ndarray.flatten(dst.data[0].copy())
-        print 'Blob: %s; %s' % (key, data.shape)
+        print('Blob: %s; %s' % (key, data.shape))
         failure = False
         first = -1
         for i in range(0,data.shape[0]):
@@ -296,8 +298,8 @@ def sanity_check_net_blobs(net):
                 failure = True
                 if first == -1:
                     first = i
-                print 'Failure, location %d; objective %d' % (i, data[i])
-        print 'Failure: %s, first at %d, mean %3.5f' % (failure,first,np.mean(data))
+                print('Failure, location %d; objective %d' % (i, data[i]))
+        print('Failure: %s, first at %d, mean %3.5f' % (failure,first,np.mean(data)))
         if failure:
             break
         
@@ -596,6 +598,9 @@ class MakeDatasetOffset(object):
         max_offsets = [n - (u + b) for n, u, b in zip(shape_of_source_data, self.output_dims, self.border)]
         min_offsets = [-b for b in self.border]
         offsets = [self.random_state.randint(min_, max_ + 1) for min_, max_ in zip(min_offsets, max_offsets)]
+        if DEBUG:
+            print("Training offset generator: dataset #", which_dataset,
+                  "with offset", offsets, "from offset range", min_offsets, "to", max_offsets)
         return which_dataset, offsets
 
 
@@ -677,15 +682,12 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 # transform the input
                 # assumes that the original input pixel values are scaled between (0,1)
                 if DEBUG:
-                    print('Training data min/mean/max after transform:', 
-                          np.min(data_slice), np.mean(data_slice), np.max(data_slice))
+                    print("data_slice stats, pre-transform: min", data_slice.min(), "mean", data_slice.mean(),
+                          "max", data_slice.max())
                 lo, hi = dataset['transform']['scale']
                 data_slice = 0.5 + (data_slice - 0.5) * np.random.uniform(low=lo, high=hi)
                 lo, hi = dataset['transform']['shift']
                 data_slice = data_slice + np.random.uniform(low=lo, high=hi)
-                if DEBUG:
-                    print('Training data min/mean/max after transform:', 
-                          np.min(data_slice), np.mean(data_slice), np.max(data_slice))
         else:
             dataset, index_of_shared_dataset = training_data_loader.get_dataset()
             data_slice = dataset['data']
@@ -693,13 +695,12 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             label_slice = dataset['label']
             assert label_slice.shape == (fmaps_out,) + tuple(output_dims)
             if DEBUG:
-                print("Training with next dataset in data loader, which has offset {o}". format(o=dataset['offset']))
+                print("Training with next dataset in data loader, which has offset", dataset['offset'])
             mask_slice = None
             if 'mask' in dataset:
                 mask_slice = dataset['mask']
         if DEBUG:
-            print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, "
-                  "data_slice.max() {}".format(data_slice.min(), data_slice.mean(), data_slice.max()))
+            print("data_slice stats: min", data_slice.min(), "mean", data_slice.mean(), "max", data_slice.max())
         if options.loss_function == 'malis':
             components_slice, ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
             # Also recomputing the corresponding labels (connected components)
