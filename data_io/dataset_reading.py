@@ -25,20 +25,23 @@ def get_numpy_dataset(original_dataset, input_slice, output_slice, transform):
     dataset_numpy['data'] = data_slice
     # load outputs if desired
     if output_slice is not None:
-        dataset_numpy['components'] = np.array(original_dataset['components'][output_slice])
+        dataset_numpy['components'] = get_zero_padded_array_slice(original_dataset['components'], output_slice)
         if 'label' in original_dataset:
-            label_slice = (slice(None),) + output_slice
-            dataset_numpy['label'] = np.array(original_dataset['label'][label_slice])
+            label_shape = original_dataset['label'].shape
+            label_slice = (slice(0, label_shape[0]),) + output_slice
+            dataset_numpy['label'] = get_zero_padded_array_slice(original_dataset['label'], label_slice)
         else:
             # compute affinities from components
             dataset_numpy['label'] = pygt.malis.seg_to_affgraph(dataset_numpy['components'], original_dataset['nhood'])
             warnings.warn("Computing affinity labels because 'label' wasn't provided in data source.", UserWarning)
         if 'mask' in original_dataset:
-            dataset_numpy['mask'] = np.array(original_dataset['mask'][output_slice], dtype=np.uint8)
+            dataset_numpy['mask'] = get_zero_padded_array_slice(original_dataset['mask'], output_slice)
+            dataset_numpy['mask'] = dataset_numpy['mask'].astype(np.uint8)
         else:
             # assume no masking
-            dataset_numpy['mask'] = np.ones_like(dataset_numpy['components'], dtype=np.uint8)
-            warnings.warn("No mask provided. Setting to 1 everywhere.", UserWarning)
+            assumed_output_mask = np.ones_like(original_dataset['components'], dtype=np.uint8)
+            dataset_numpy['mask'] = get_zero_padded_array_slice(assumed_output_mask, output_slice)
+            warnings.warn("No mask provided. Setting to 1 where outputs exist.", UserWarning)
     return dataset_numpy
 
 
