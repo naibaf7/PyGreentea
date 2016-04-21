@@ -5,8 +5,6 @@ from scipy import io
 import math
 import threading
 import png
-from Crypto.Random.random import randint
-import numpy.random
 import time
 
 
@@ -586,17 +584,18 @@ def init_testnet(test_net, trained_model=None, test_device=0):
 
 
 class MakeDatasetOffset(object):
-    def __init__(self, dims, output_dims, input_padding):
-        self.dims = dims
+    def __init__(self, output_dims, input_padding):
         self.output_dims = output_dims
-        self.input_padding = input_padding
+        self.border = [int(math.ceil(pad / float(2))) for pad in input_padding]
+        self.dims = len(output_dims)
+        self.random_state = np.random.RandomState()
 
     def __call__(self, data_array_list):
-        which_dataset = randint(0, len(data_array_list) - 1)
-        offsets = []
-        for j in range(0, self.dims):
-            offsets.append(randint(0, data_array_list[which_dataset]['data'].shape[j] - (self.output_dims[j] + self.input_padding[j])))
-        offsets = tuple([int(x) for x in offsets])
+        which_dataset = self.random_state.randint(0, len(data_array_list))
+        shape_of_source_data = data_array_list[which_dataset]['data'].shape[-self.dims:]
+        max_offsets = [n - (u + b) for n, u, b in zip(shape_of_source_data, self.output_dims, self.border)]
+        min_offsets = [-b for b in self.border]
+        offsets = [self.random_state.randint(min_, max_ + 1) for min_, max_ in zip(min_offsets, max_offsets)]
         return which_dataset, offsets
 
 
@@ -630,15 +629,13 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     # Nhood specifications         (n = #edges, f = 3)
     if (('nhood' in data_arrays[0]) and (options.loss_function == 'malis')):
         shapes += [[1,1] + list(np.shape(data_arrays[0]['nhood']))]
-
     net_io = NetInputWrapper(net, shapes)
-
+    make_dataset_offset = MakeDatasetOffset(output_dims, input_padding)
     if data_io.data_loader_should_be_used_with(data_arrays):
         using_data_loader = True
         # and initialize queue!
         loader_size = 20
         n_workers = 10
-        make_dataset_offset = MakeDatasetOffset(dims, output_dims, input_padding)
         loader_kwargs = dict(
             size=loader_size,
             datasets=data_arrays,
@@ -668,15 +665,13 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 # after testing finishes, switch back to the training device
                 caffe.select_device(options.train_device, False)
         if not using_data_loader:
-            print("Using data_arrays directly. No data loader.")
-            # First pick the dataset_index to train with
-            dataset_index = randint(0, len(data_arrays) - 1)
+            dataset_index, offsets = make_dataset_offset(data_arrays)
             dataset = data_arrays[dataset_index]
-            offsets = []
-            for j in range(0, dims):
-                offsets.append(randint(0, dataset['data'].shape[1 + j] - (output_dims[j] + input_padding[j])))
             # These are the raw data elements
-            data_slice = slice_data(dataset['data'], [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
+            data_slice = data_io.util.get_zero_padded_slice_from_array_by_offset(
+                array=dataset['data'],
+                origin=[0] + offsets,
+                shape=[fmaps_in] + input_dims)
             label_slice = slice_data(dataset['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
             if 'transform' in dataset:
                 # transform the input
