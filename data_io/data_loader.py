@@ -106,10 +106,14 @@ class DataLoader(object):
         dtypes = self.dtypes
 
     def get_dataset(self, copy=False):
-        while len(self.ready_shared_datasets) < 1:
-            print('\n', 'waiting for an available shared dataset', '\n')
-            time.sleep(1)
-            continue
+        wait_start_time = None
+        while len(self.ready_shared_datasets) == 0:
+            if wait_start_time is None:
+                wait_start_time = time.time()
+                print("Waiting for dataset...")
+            time.sleep(0.01)
+        if wait_start_time is not None:
+            print("Waited for dataset for %05.2fs" % (time.time() - wait_start_time))
         dataset_metadata = self.ready_shared_datasets.pop(0)
         index_of_shared_dataset = dataset_metadata['shared']
         index_of_given_dataset = dataset_metadata['real']
