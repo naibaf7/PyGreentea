@@ -7,6 +7,7 @@ import os
 import sys
 import threading
 import time
+import warnings
 
 import h5py
 import numpy as np
@@ -590,21 +591,35 @@ def init_testnet(test_net, trained_model=None, test_device=0):
 
 
 class MakeDatasetOffset(object):
-    def __init__(self, output_dims, input_padding):
-        self.output_dims = output_dims
+    def __init__(self, input_dims, output_dims):
+        self.input_dims = input_dims
+        input_padding = [in_ - out_ for in_, out_ in zip(input_dims, output_dims)]
         self.border = [int(math.ceil(pad / float(2))) for pad in input_padding]
-        self.dims = len(output_dims)
+        self.dims = len(input_dims)
         self.random_state = np.random.RandomState()
+        
+    def calculate_offset_bounds(self, dataset):
+        shape_of_source_data = dataset['data'].shape[-self.dims:]
+        offset_bounds = [(0, n - i) for n, i in zip(shape_of_source_data, self.input_dims)]
+        client_requested_zero_padding = dataset.get('zero_pad_inputs', False)
+        net_requires_zero_padding = any([max_ < min_ for min_, max_ in offset_bounds])
+        if net_requires_zero_padding or client_requested_zero_padding:
+            # then expand bounds to include borders
+            offset_bounds = [(min_ - border, max_ + border) for (min_, max_), border in zip(offset_bounds, self.border)]
+            if DEBUG and net_requires_zero_padding and not client_requested_zero_padding:
+                print("Zero padding even though the client didn't ask, "
+                      "because net input size exceeds source data shape")
+        return offset_bounds
 
     def __call__(self, data_array_list):
         which_dataset = self.random_state.randint(0, len(data_array_list))
-        shape_of_source_data = data_array_list[which_dataset]['data'].shape[-self.dims:]
-        max_offsets = [n - (u + b) for n, u, b in zip(shape_of_source_data, self.output_dims, self.border)]
-        min_offsets = [-b for b in self.border]
-        offsets = [self.random_state.randint(min_, max_ + 1) for min_, max_ in zip(min_offsets, max_offsets)]
+        dataset = data_array_list[which_dataset]
+        offset_bounds = self.calculate_offset_bounds(dataset)
+        offsets = [self.random_state.randint(min_, max_ + 1) for min_, max_ in offset_bounds]
         if DEBUG:
             print("Training offset generator: dataset #", which_dataset,
-                  "with offset", offsets, "from offset range", min_offsets, "to", max_offsets)
+                  "at", offsets, "from bounds", offset_bounds,
+                  "from source shape", dataset['data'].shape, "with input_dims", self.input_dims)
         return which_dataset, offsets
 
 
@@ -639,7 +654,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     if (('nhood' in data_arrays[0]) and (options.loss_function == 'malis')):
         shapes += [[1,1] + list(np.shape(data_arrays[0]['nhood']))]
     net_io = NetInputWrapper(net, shapes)
-    make_dataset_offset = MakeDatasetOffset(output_dims, input_padding)
+    make_dataset_offset = MakeDatasetOffset(input_dims, output_dims)
     if data_io.data_loader_should_be_used_with(data_arrays):
         using_data_loader = True
         # and initialize queue!
