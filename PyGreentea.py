@@ -113,13 +113,15 @@ class NetInputWrapper:
             if (self.input_keys[i] in self.net.layers_dict):
                 self.input_layers += [self.net.layers_dict[self.input_keys[i]]]
         
-        print (len(self.input_layers))
+        if DEBUG:
+            print("Input layers: ", len(self.input_layers))
         
         for i in range(0,len(shapes)):
             # Pre-allocate arrays that will persist with the network
             self.inputs += [np.zeros(tuple(self.shapes[i]), dtype=float32)]
                 
-        print (len(shapes))
+        if DEBUG:
+            print("Shapes: ", len(shapes))
         
     def setInputs(self, data):      
         for i in range(0,len(self.shapes)):
@@ -460,8 +462,8 @@ def process_core_multithreaded(device_locks, net_io, data_slice, offsets, pred_a
                 break
         if current_device_id == -1:
             time.sleep(0.0005)
-        
-    print("Using device (list ID): ", current_device_id)
+    if DEBUG:
+        print("Using device (list ID): ", current_device_id)
     # Note that this is the list ID, not the absolute device ID
     caffe.select_device(current_device_id, True)
     process_core(net_io[current_device_id], data_slice, offsets, pred_array, input_padding, fmaps_out,
