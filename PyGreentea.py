@@ -1,19 +1,26 @@
-import os, sys, inspect, gc
+from __future__ import print_function
+
+import gc
+import inspect
+import math
+import os
+import sys
+import threading
+import multiprocessing
+import concurrent.futures
+import time
+import warnings
+
 import h5py
 import numpy as np
-from scipy import io
-import math
-import threading
 import png
-from Crypto.Random.random import randint
-import numpy.random
-import time
+from scipy import io
 
 
 # set this to True after importing this module to prevent multithreading
 USE_ONE_THREAD = False
 
-DEBUG = False
+DEBUG = True
 
 # Determine where PyGreentea is
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
@@ -143,7 +150,7 @@ def normalize(dataset, newmin=-1, newmax=1):
 
 def getSolverStates(prefix):
     files = [f for f in os.listdir('.') if os.path.isfile(f)]
-    print files
+    print(files)
     solverstates = []
     for file in files:
         if(prefix+'_iter_' in file and '.solverstate' in file):
@@ -152,7 +159,7 @@ def getSolverStates(prefix):
             
 def getCaffeModels(prefix):
     files = [f for f in os.listdir('.') if os.path.isfile(f)]
-    print files
+    print(files)
     caffemodels = []
     for file in files:
         if(prefix+'_iter_' in file and '.caffemodel' in file):
@@ -290,7 +297,7 @@ def sanity_check_net_blobs(net):
     for key in net.blobs.keys():
         dst = net.blobs[key]
         data = np.ndarray.flatten(dst.data[0].copy())
-        print 'Blob: %s; %s' % (key, data.shape)
+        print('Blob: %s; %s' % (key, data.shape))
         failure = False
         first = -1
         for i in range(0,data.shape[0]):
@@ -298,8 +305,8 @@ def sanity_check_net_blobs(net):
                 failure = True
                 if first == -1:
                     first = i
-                print 'Failure, location %d; objective %d' % (i, data[i])
-        print 'Failure: %s, first at %d, mean %3.5f' % (failure,first,np.mean(data))
+                print('Failure, location %d; objective %d' % (i, data[i]))
+        print('Failure: %s, first at %d, mean %3.5f' % (failure,first,np.mean(data)))
         if failure:
             break
         
@@ -441,7 +448,61 @@ def generate_dataset_offsets_for_processing(net, data_arrays, process_borders):
     return dataset_offsets_to_process
 
 
-def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=True, target_arrays=None):
+def process_core_multithreaded(device_locks, net_io, data_slice, offsets, pred_array, input_padding, fmaps_out,
+                 output_dims, using_data_loader, offsets_to_enqueue, processing_data_loader,
+                 index_of_shared_dataset, source_dataset_index):
+    # Each thread sets its GPU
+    current_device_id = -1
+    while (current_device_id == -1):
+        for device_list_id in range(0,len(device_locks)):
+            if (device_locks[device_list_id].acquire(False)):
+                current_device_id = device_list_id
+                break
+        if current_device_id == -1:
+            time.sleep(0.0005)
+        
+    print("Using device (list ID): ", current_device_id)
+    # Note that this is the list ID, not the absolute device ID
+    caffe.select_device(current_device_id, True)
+    process_core(net_io[current_device_id], data_slice, offsets, pred_array, input_padding, fmaps_out,
+                 output_dims, using_data_loader, offsets_to_enqueue, processing_data_loader,
+                 index_of_shared_dataset, source_dataset_index)
+    device_locks[device_list_id].release()
+    
+def process_core(net_io, data_slice, offsets, pred_array, input_padding, fmaps_out,
+                 output_dims, using_data_loader, offsets_to_enqueue, processing_data_loader,
+                 index_of_shared_dataset, source_dataset_index):
+    process_local_net_io = None
+    if isinstance(net_io, list):
+        process_local_net_io = net_io[multiprocessing.Process.name]
+    else:
+        process_local_net_io = net_io
+        
+    output = process_input_data(process_local_net_io, data_slice)
+    print(offsets)
+    print(output.mean())
+    pads = [int(math.ceil(pad / float(2))) for pad in input_padding]
+    offsets_for_pred_array = [0] + [offset + pad for offset, pad in zip(offsets, pads)]
+    set_slice_data(pred_array, output, offsets_for_pred_array, [fmaps_out] + output_dims)
+    if using_data_loader and len(offsets_to_enqueue) > 0:
+        # start adding the next slice to the loader with index_of_shared_dataset
+        new_offsets = offsets_to_enqueue.pop(0)
+        processing_data_loader.start_refreshing_shared_dataset(
+            index_of_shared_dataset,
+            new_offsets,
+            source_dataset_index,
+            transform=False
+        )
+
+def process(nets, data_arrays, shapes=None, net_io=None, zero_pad_source_data=True, target_arrays=None):
+    net = None
+    thread_pool = None
+    device_locks = None
+    if isinstance(nets, list):
+        # Grab one network to figure out parameters
+        net = nets[0]
+    else:
+        net = nets
     input_dims, output_dims, input_padding = get_spatial_io_dims(net)
     fmaps_in, fmaps_out = get_fmap_io_dims(net)
     dims = len(output_dims)
@@ -452,13 +513,20 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
             assert prediction_shape == target.shape, \
                 "Target array for dname {} is the wrong shape. {} should be {}"\
                     .format(data_array['name'], target.shape, prediction_shape)
-    pred_arrays = target_arrays or []
+    pred_arrays = []
     if shapes is None:
         # Raw data slice input         (n = 1, f = 1, spatial dims)
         shapes = [[1, fmaps_in] + input_dims]
     if net_io is None:
-        net_io = NetInputWrapper(net, shapes)
+        if isinstance(nets, list):
+            net_io = []
+            for net_inst in nets:
+                net_io += [NetInputWrapper(net_inst, shapes)]
+        else:   
+            net_io = NetInputWrapper(net, shapes)
+            
     using_data_loader = data_io.data_loader_should_be_used_with(data_arrays)
+    processing_data_loader = None
     if using_data_loader:
         processing_data_loader = data_io.DataLoader(
             size=5,
@@ -470,6 +538,14 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
     dataset_offsets_to_process = generate_dataset_offsets_for_processing(
         net, data_arrays, process_borders=zero_pad_source_data)
     for source_dataset_index in dataset_offsets_to_process:
+        
+        # Launch 
+        if isinstance(nets, list):
+            thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(nets))
+            device_locks = []
+            for device_list_id in range(0,len(nets)):
+                device_locks += [threading.Lock()]
+        
         list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
         if DEBUG:
             print("source_dataset_index = ", source_dataset_index)
@@ -502,6 +578,7 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
                 )
         # process each offset
         for i_offsets in range(len(list_of_offsets_to_process)):
+            index_of_shared_dataset = None
             if using_data_loader:
                 dataset, index_of_shared_dataset = processing_data_loader.get_dataset()
                 offsets = list(dataset['offset'])  # convert tuple to list
@@ -524,21 +601,18 @@ def process(net, data_arrays, shapes=None, net_io=None, zero_pad_source_data=Tru
                         [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
                     )
             # process the chunk
-            output = process_input_data(net_io, data_slice)
-            print(offsets)
-            print(output.mean())
-            pads = [int(math.ceil(pad / float(2))) for pad in input_padding]
-            offsets_for_pred_array = [0] + [offset + pad for offset, pad in zip(offsets, pads)]
-            set_slice_data(pred_array, output, offsets_for_pred_array, [fmaps_out] + output_dims)
-            if using_data_loader and len(offsets_to_enqueue) > 0:
-                # start adding the next slice to the loader with index_of_shared_dataset
-                new_offsets = offsets_to_enqueue.pop(0)
-                processing_data_loader.start_refreshing_shared_dataset(
-                    index_of_shared_dataset,
-                    new_offsets,
-                    source_dataset_index,
-                    transform=False
-                )
+            if isinstance(net_io, list):
+                thread_pool.submit(process_core_multithreaded, device_locks, net_io, data_slice, offsets, pred_array, input_padding, fmaps_out,
+                                    output_dims, using_data_loader, offsets_to_enqueue, processing_data_loader,
+                                    index_of_shared_dataset, source_dataset_index)
+            else:
+                process_core(net_io, data_slice, offsets, pred_array, input_padding, fmaps_out,
+                 output_dims, using_data_loader, offsets_to_enqueue, processing_data_loader,
+                 index_of_shared_dataset, source_dataset_index)
+
+        if not (thread_pool is None):
+            thread_pool.shutdown(True)
+        
         pred_arrays.append(pred_array)
         if using_data_loader:
             processing_data_loader.destroy()
@@ -606,25 +680,55 @@ def init_solver(solver_config, options):
 
 def init_testnet(test_net, trained_model=None, test_device=0):
     caffe.set_mode_gpu()
-    caffe.select_device(test_device, False)
-    if trained_model is None:
-        return caffe.Net(test_net, caffe.TEST)
+    if isinstance(test_device, list):
+        # Initialize test network for each device
+        networks = []
+        for device in test_device:
+            caffe.select_device(device, False)
+            if trained_model is None:
+                networks += [caffe.Net(test_net, caffe.TEST)]
+            else:
+                networks += [caffe.Net(test_net, trained_model, caffe.TEST)]
+        return networks
     else:
-        return caffe.Net(test_net, trained_model, caffe.TEST)
+        # Initialize test network for a single device
+        caffe.select_device(test_device, False)
+        if trained_model is None:
+            return caffe.Net(test_net, caffe.TEST)
+        else:
+            return caffe.Net(test_net, trained_model, caffe.TEST)
 
 
 class MakeDatasetOffset(object):
-    def __init__(self, dims, output_dims, input_padding):
-        self.dims = dims
-        self.output_dims = output_dims
-        self.input_padding = input_padding
+    def __init__(self, input_dims, output_dims):
+        self.input_dims = input_dims
+        input_padding = [in_ - out_ for in_, out_ in zip(input_dims, output_dims)]
+        self.border = [int(math.ceil(pad / float(2))) for pad in input_padding]
+        self.dims = len(input_dims)
+        self.random_state = np.random.RandomState()
+        
+    def calculate_offset_bounds(self, dataset):
+        shape_of_source_data = dataset['data'].shape[-self.dims:]
+        offset_bounds = [(0, n - i) for n, i in zip(shape_of_source_data, self.input_dims)]
+        client_requested_zero_padding = dataset.get('zero_pad_inputs', False)
+        net_requires_zero_padding = any([max_ < min_ for min_, max_ in offset_bounds])
+        if net_requires_zero_padding or client_requested_zero_padding:
+            # then expand bounds to include borders
+            offset_bounds = [(min_ - border, max_ + border) for (min_, max_), border in zip(offset_bounds, self.border)]
+            if DEBUG and net_requires_zero_padding and not client_requested_zero_padding:
+                print("Zero padding even though the client didn't ask, "
+                      "because net input size exceeds source data shape")
+        return offset_bounds
 
     def __call__(self, data_array_list):
-        which_dataset = randint(0, len(data_array_list) - 1)
-        offsets = []
-        for j in range(0, self.dims):
-            offsets.append(randint(0, data_array_list[which_dataset]['data'].shape[j] - (self.output_dims[j] + self.input_padding[j])))
-        offsets = tuple([int(x) for x in offsets])
+        which_dataset = self.random_state.randint(0, len(data_array_list))
+        dataset = data_array_list[which_dataset]
+        offset_bounds = self.calculate_offset_bounds(dataset)
+        offsets = [self.random_state.randint(min_, max_ + 1) for min_, max_ in offset_bounds]
+        if DEBUG:
+            print("Training offset generator: dataset #", which_dataset,
+                  "at", offsets, "from bounds", offset_bounds,
+                  "from source shape", dataset['data'].shape, "with input_dims", self.input_dims)
         return which_dataset, offsets
 
 
@@ -658,9 +762,8 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
     # Nhood specifications         (n = #edges, f = 3)
     if (('nhood' in data_arrays[0]) and (options.loss_function == 'malis')):
         shapes += [[1,1] + list(np.shape(data_arrays[0]['nhood']))]
-
     net_io = NetInputWrapper(net, shapes)
-
+    make_dataset_offset = MakeDatasetOffset(input_dims, output_dims)
     if data_io.data_loader_should_be_used_with(data_arrays):
         using_data_loader = True
         # and initialize queue!
@@ -688,38 +791,32 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         using_data_loader = False
 
     # Loop from current iteration to last iteration
-    time_counter = 0
-    total_time = 0
     for i in range(solver.iter, solver.max_iter):
-        
+        start = time.time()
         if (options.test_net != None and i % options.test_interval == 1):
             test_eval.evaluate(i)
             if USE_ONE_THREAD:
                 # after testing finishes, switch back to the training device
                 caffe.select_device(options.train_device, False)
-
-        start = time.time()
-
         if not using_data_loader:
-            print("Using data_arrays directly. No data loader.")
-            # First pick the dataset_index to train with
-            dataset_index = randint(0, len(data_arrays) - 1)
+            dataset_index, offsets = make_dataset_offset(data_arrays)
             dataset = data_arrays[dataset_index]
-            offsets = []
-            for j in range(0, dims):
-                offsets.append(randint(0, dataset['data'].shape[1 + j] - (output_dims[j] + input_padding[j])))
             # These are the raw data elements
-            data_slice = slice_data(dataset['data'], [0] + offsets, [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(0, dims)])
+            data_slice = data_io.util.get_zero_padded_slice_from_array_by_offset(
+                array=dataset['data'],
+                origin=[0] + offsets,
+                shape=[fmaps_in] + input_dims)
             label_slice = slice_data(dataset['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
-            # transform the input
-            # this code assumes that the original input pixel values are scaled between (0,1)
             if 'transform' in dataset:
-                # print('Pre:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+                # transform the input
+                # assumes that the original input pixel values are scaled between (0,1)
+                if DEBUG:
+                    print("data_slice stats, pre-transform: min", data_slice.min(), "mean", data_slice.mean(),
+                          "max", data_slice.max())
                 lo, hi = dataset['transform']['scale']
-                data_slice = 0.5 + (data_slice-0.5)*np.random.uniform(low=lo,high=hi)
+                data_slice = 0.5 + (data_slice - 0.5) * np.random.uniform(low=lo, high=hi)
                 lo, hi = dataset['transform']['shift']
-                data_slice = data_slice + np.random.uniform(low=lo,high=hi)
-                # print('Post:',(data_slice.min(),data_slice.mean(),data_slice.max()))
+                data_slice = data_slice + np.random.uniform(low=lo, high=hi)
         else:
             dataset, index_of_shared_dataset = training_data_loader.get_dataset()
             data_slice = dataset['data']
@@ -727,21 +824,17 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             label_slice = dataset['label']
             assert label_slice.shape == (fmaps_out,) + tuple(output_dims)
             if DEBUG:
-                print("Training with next dataset in data loader, which has offset {o}". format(o=dataset['offset']))
+                print("Training with next dataset in data loader, which has offset", dataset['offset'])
             mask_slice = None
             if 'mask' in dataset:
                 mask_slice = dataset['mask']
-
         if DEBUG:
-            print("data_slice stats: data_slice.min() {}, data_slice.mean() {}, "
-                  "data_slice.max() {}".format(data_slice.min(), data_slice.mean(), data_slice.max()))
-
+            print("data_slice stats: min", data_slice.min(), "mean", data_slice.mean(), "max", data_slice.max())
         if options.loss_function == 'malis':
-            components_slice,ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
+            components_slice, ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
             # Also recomputing the corresponding labels (connected components)
             net_io.setInputs([data_slice, label_slice, components_slice, data_arrays[0]['nhood']])
-            
-        if options.loss_function == 'euclid':
+        elif options.loss_function == 'euclid':
             label_slice_mean = label_slice.mean()
             if 'mask' in dataset:
                 label_slice = label_slice * mask_slice
@@ -754,42 +847,22 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
                 w_neg = w_neg / (2.0 * (1.0 - frac_pos))
             error_scale_slice = scale_errors(label_slice, w_neg, w_pos)
             net_io.setInputs([data_slice, label_slice, error_scale_slice])
-
-        if options.loss_function == 'softmax':
+        elif options.loss_function == 'softmax':
             # These are the affinity edge values
             net_io.setInputs([data_slice, label_slice])
-        
-        # Single step
-        loss = solver.step(1)
-        # sanity_check_net_blobs(net)
-
-        # def make_offset_for_dataset(source_dataset_index):
-        #     full_3d_shape_of_new_dataset = data_arrays[source_dataset_index]['data'].shape[-3:]
-        #     offsets = tuple([int(randint(0, full_3d_shape_of_new_dataset[j] - input_dims[j]))
-        #                      for j in range(dims)])
-        #     return offsets
-
+        loss = solver.step(1)  # Single step
         if using_data_loader:
             training_data_loader.start_refreshing_shared_dataset(index_of_shared_dataset)
-
         while gc.collect():
             pass
-
-
+        time_of_iteration = time.time() - start
         if options.loss_function == 'euclid' or options.loss_function == 'euclid_aniso':
-            print("[Iter %i] Loss: %f, frac_pos=%f, w_pos=%f" % (i,loss,frac_pos,w_pos))
+            print("[Iter %i] Time: %05.2fs Loss: %f, frac_pos=%f, w_pos=%f" % (i, time_of_iteration, loss, frac_pos, w_pos))
         else:
-            print("[Iter %i] Loss: %f" % (i,loss))
-        # TODO: Store losses to file
+            print("[Iter %i] Time: %05.2fs Loss: %f" % (i, time_of_iteration, loss))
         losses += [loss]
-
         if hasattr(options, 'loss_snapshot') and ((i % options.loss_snapshot) == 0):
             io.savemat('loss.mat',{'loss':losses})
 
-        time_counter += 1
-        total_time += time.time() - start
-        if DEBUG:
-            print("taking {} on average per iteration".format(total_time/time_counter))
-    
     if using_data_loader:
         training_data_loader.destroy()
