@@ -79,6 +79,7 @@ class NetConf:
     fmap_output = 3
     # Loss function and mode ("malis", "euclid", "softmax")
     loss_function = "euclid"
+    malis_split_component_phases = False
     # ReLU negative slope
     relu_slope = 0.005
     # Batch normalization
@@ -824,7 +825,7 @@ def caffenet(netconf, netmode):
         if netconf.loss_function == 'malis':
             net.label, net.labeli = netgen.data_layer([1]+[netconf.fmap_output]+netconf.output_shape)
             net.components, net.componentsi = netgen.data_layer([1,1]+netconf.output_shape)
-            net.nhood, net.nhoodi = netgen.data_layer([1,1]+[netconf.fmap_output]+[3])
+            net.nhood, net.nhoodi = netgen.data_layer([1, 2 if netconf.malis_split_component_phases else 1]+[netconf.fmap_output]+[3])
             net.silence = L.Silence(net.datai, net.labeli, net.componentsi, net.nhoodi, ntop=0)
             
         if netconf.loss_function == 'euclid':
