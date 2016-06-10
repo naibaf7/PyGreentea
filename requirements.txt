@@ -5,7 +5,7 @@ h5py
 numpy
 scipy
 pypng
-caffe
+#caffe  # not on pypi
 
 # test
 expects
