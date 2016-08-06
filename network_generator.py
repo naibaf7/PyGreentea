@@ -742,7 +742,7 @@ def compute_valid_io_shapes(netconf, netmode, min_output_shape, max_output_shape
             except (MemoryLimitException, ConvolutionBufferException, ShapeException, LayerException):
                 limit_reached = True
                 
-            # Deterministic exit condition (protects against infiite looping)
+            # Deterministic exit condition (protects against infinite looping)
             if fmaps_start > 100000:
                 upper_limit = 100000
                 break;
