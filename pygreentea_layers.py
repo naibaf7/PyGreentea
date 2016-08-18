@@ -230,7 +230,7 @@ def implement_sknet(bottom, netconf, sknetconf, return_blobs_only=True):
 
     fmaps = fmaps + [sknetconf.fmap_bridge_rule(fmaps[-1])]
     # 1st IP layer
-    conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=sw_shape)
+    conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=sw_shape, dilation=dilation)
     blobs = blobs + [conv]
 
     # Remaining IP layers
