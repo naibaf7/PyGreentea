@@ -4,10 +4,12 @@ import copy, math
 import caffe
 import caffe.net_spec as net_spec
 
-from collections import OrderedDict, Counter
+from collections import OrderedDict, Counter, Iterable
 
 from caffe import layers as L, params as P, to_proto
 from caffe.proto import caffe_pb2
+import six
+from compiler.ast import nodes
 
 
 class MetaLayers(object):
@@ -83,7 +85,7 @@ class UNetConf:
         if ('fmap_inc_rule' in params):
             self.fmap_inc_rule = params['fmap_inc_rule']
         if ('fmap_dec_rule' in params):
-            self.depth = params['fmap_dec_rule']
+            self.fmap_dec_rule = params['fmap_dec_rule']
         if ('downsampling_strategy' in params):
             self.downsampling_strategy = params['downsampling_strategy']
         if ('conv_down' in params):
@@ -97,6 +99,8 @@ class UNetConf:
                 if (sknetconf_dict != None):
                     self.sknetconfs += [SKNetConf()]
                     self.sknetconfs[-1].parse(sknetconf_dict)
+                else:
+                    self.sknetconfs += [None]
             
 class NetConf:
     # Number of feature maps in the start
@@ -205,16 +209,15 @@ def mergecrop(bottom_a, bottom_b, op = 'stack'):
     return L.MergeCrop(bottom_a, bottom_b, forward=[1,1], backward=[1,1], operation=(0 if (op == 'stack') else 1))
 
     
-def implement_sknet(bottom, netconf, sknetconf):
+def implement_sknet(bottom, netconf, sknetconf, return_blobs_only=True):
     blobs = [bottom]
     fmaps = [netconf.fmap_start]
     dilation = [1 for i in range(0,len(sknetconf.padding))]
-    print(sknetconf.padding)
-    sw_shape = [sknetconf.padding[min(i,len(sknetconf.padding)-1)] + 1 for i in range(0,len(sknetconf.padding))]
+    sw_shape = [minidx(sknetconf.padding, i) + 1 for i in range(0,len(sknetconf.padding))]
     for i in range(0, len(sknetconf.conv)):
-        final_ksize = [sknetconf.conv[i][min(j, len(sknetconf.conv[i])-1)] for j in range(0,len(sw_shape))]
+        final_ksize = [minidx(sknetconf.conv[i], j) for j in range(0,len(sw_shape))]
         for j in range(0, len(sw_shape)):
-            if(not (sw_shape[j] - (final_ksize[j] - 1)) % 2 == 0):
+            if (not (sw_shape[j] - (final_ksize[j] - 1)) % 2 == 0):
                 final_ksize[j] += 1
             sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) / 2
         conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=final_ksize, dilation=dilation)
@@ -235,10 +238,14 @@ def implement_sknet(bottom, netconf, sknetconf):
         fmaps = fmaps + [sknetconf.fmap_dec_rule(fmaps[-1])]
         conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=[1])
         blobs = blobs + [conv]    
-    return blobs[-1]
+    if return_blobs_only:
+        return blobs[-1]
+    else:
+        return blobs[-1], fmaps[-1]
+
             
 
-def implement_usknet(bottom, netconf, unetconf): 
+def implement_usknet(bottom, netconf, unetconf, return_blobs_only=True): 
     blobs = [bottom]
     mergecrop_tracker = []
     fmaps = [netconf.fmap_start]
@@ -246,12 +253,12 @@ def implement_usknet(bottom, netconf, unetconf):
     if unetconf.depth > 0:
         # U-Net downsampling; 2*Convolution+Pooling
         for i in range(0, unetconf.depth):
-            convolution_config = unetconf.conv_down[min(i,len(unetconf.conv_down) - 1)]
+            convolution_config = minidx(unetconf.conv_down, i)
             for j in range(0,len(convolution_config)):
                 conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j])
                 blobs = blobs + [conv]
                 for k in range(0, len(unetconf.conv_down[0][0])):
-                    pad_shape[i][k] += (convolution_config[j][min(k, len(convolution_config[j]) - 1)] - 1)
+                    pad_shape[i][k] += (minidx(convolution_config[j], k) - 1)
 
             mergecrop_tracker += [len(blobs)-1]
             pool = max_pool(netconf, blobs[-1], kernel_size=unetconf.downsampling_strategy[i], stride=unetconf.downsampling_strategy[i])
@@ -260,7 +267,7 @@ def implement_usknet(bottom, netconf, unetconf):
     
     # If there is no SK-Net component, fill with normal convolutions
     if (unetconf.depth > 0 and (len(unetconf.sknetconfs) - 1 < unetconf.depth or unetconf.sknetconfs[unetconf.depth] == None)):
-        convolution_config = unetconf.conv_down[min(unetconf.depth, len(unetconf.conv_down) - 1)]
+        convolution_config = minidx(unetconf.conv_down, unetconf.depth)
         for j in range(0,len(convolution_config)):
             # Here we are at the bottom, so the second half of the convolutions already belongs to the up-path
             if (unetconf.use_deconv_uppath and j >= len(convolution_config)/2):
@@ -270,13 +277,15 @@ def implement_usknet(bottom, netconf, unetconf):
                 conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j])
                 blobs = blobs + [conv]
                 for k in range(0, len(unetconf.conv_down[0][0])):
-                    pad_shape[unetconf.depth][k] += (convolution_config[j][min(k, len(convolution_config[j]) - 1)] - 1)
+                    pad_shape[unetconf.depth][k] += (minidx(convolution_config[j], k) - 1)
     else:
         netconf_sk = copy.deepcopy(netconf)
         netconf_sk.fmap_start = fmaps[-1]
         sknetconf_sk = copy.deepcopy(unetconf.sknetconfs[unetconf.depth])
-        sknetconf_sk.padding = [sknetconf_sk.padding[min(i,len(sknetconf_sk.padding) - 1)] for i in range(0,len(pad_shape[unetconf.depth]))]
-        blobs = blobs + [implement_sknet(blobs[-1], netconf_sk, sknetconf_sk)]
+        sknetconf_sk.padding = [minidx(sknetconf_sk.padding, i) for i in range(0,len(pad_shape[unetconf.depth]))]
+        sk_blob, sk_fmaps = implement_sknet(blobs[-1], netconf_sk, sknetconf_sk, return_blobs_only=False)
+        blobs = blobs + [sk_blob]
+        fmaps = fmaps + [sk_fmaps]
         for k in range(0, len(unetconf.conv_down[0][0])):
             pad_shape[unetconf.depth][k] += sknetconf_sk.padding[k]
     if unetconf.depth > 0:
@@ -304,16 +313,471 @@ def implement_usknet(bottom, netconf, unetconf):
             mergec = mergecrop(blobs[-1], pre_merge_blobs[-1])
             blobs = blobs + [mergec]
             
-            convolution_config = unetconf.conv_up[min(unetconf.depth - i - 1, len(unetconf.conv_up) - 1)]
+            convolution_config = minidx(unetconf.conv_up, unetconf.depth - i - 1)
             for j in range(0,len(convolution_config)):
                 pad =  [convolution_config[j][k] - 1 for k in range(0,len(convolution_config[j]))] if (unetconf.use_deconv_uppath) else [0]                       
                 conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j], pad=pad)
                 blobs = blobs + [conv]
                 for k in range(0, len(unetconf.conv_up[0][0])):
-                    pad_shape[unetconf.depth - i - 1][k] += (convolution_config[j][min(k, len(convolution_config[j]) - 1)] - 1)
+                    pad_shape[unetconf.depth - i - 1][k] += (minidx(convolution_config[j], k) - 1)
     # Return the last blob of the network (goes to error objective)
-    return blobs[-1]
+    if return_blobs_only:
+        return blobs[-1]
+    else:
+        return blobs[-1], fmaps[-1]
+    
+def fix_input_dims(net, source_layer, shape_coupled=[], stage=None, phase=None):
+    graph = Graph()
+    
+    # Resolve the source layer function
+    if (type(source_layer) == net_spec.Top):
+        source_layer = source_layer.fn
+
+    for name, top in six.iteritems(net.tops):
+        if (isinstance(top, Iterable) and len(top) > 0):
+            for subtop in top:
+                graph.add_element(subtop)
+        else:
+            graph.add_element(top)
+                
+    print("Net explicit elements: " + str(len(net.tops)))
+    print("Graph nodes: " + str(len(graph.nodes)))
+    print("Graph edges: " + str(len(graph.edges)))
+    print("Source nodes: " + str(len(graph.get_source_nodes())))
+    print("Sink nodes: " + str(len(graph.get_sink_nodes())))
+
+    sources = graph.get_source_nodes()
+    sinks = graph.get_sink_nodes()
+    
+    source_shape = []
+    if ('dim' in source_layer.params):
+        source_shape = source_layer.params['dim']
+    
+    dims = len(source_shape) - 2
+    
+    test_sources = []
+    test_max_shapes = []
+    
+    for source in sources:
+        if ('dim' in source.fn.params):
+            if (source.fn == source_layer):
+                test_sources = [source] + test_sources
+                test_max_shapes = [source.fn.params['dim']] + test_max_shapes
+            else:
+                test_sources = test_sources + [source]
+                test_max_shapes = test_max_shapes + [source.fn.params['dim']]
+
+    test_current_shapes = [[] for i in range(0,len(test_sources))]
+    
+    curr_src_idx = 0
+    
+    # Test each dimension
+    for dim_idx in range(0, dims):
+        curr_src_idx = 0
+        if (dim_idx > 0 and len(shape_coupled) >= dim_idx and shape_coupled[dim_idx] > -1):
+            for src_idx in range(0, len(test_sources)):
+                # Copy the shape from the other dimension
+                test_current_shapes[src_idx] = test_current_shapes[src_idx] + [copy.deepcopy(test_current_shapes[src_idx][shape_coupled[dim_idx] + 2])]
+        else:
+            # Test each source
+            while (True):
+                # Initialize the source shape
+                if (len(test_current_shapes[curr_src_idx]) == 0):
+                    test_current_shapes[curr_src_idx] = [test_max_shapes[curr_src_idx][i] for i in range(0, 2 + dim_idx + 1)]
+                elif (len(test_current_shapes[curr_src_idx]) < 2 + dim_idx + 1):
+                    test_current_shapes[curr_src_idx] = test_current_shapes[curr_src_idx] + [test_max_shapes[curr_src_idx][2 + dim_idx]]
+                 
+                # Forward the values
+                graph.reset_error()
+                graph.propagate_shape_forward(test_sources[curr_src_idx].fn, curr_src_idx, test_current_shapes[curr_src_idx])
+                
+                # Test the shape
+                error = graph.has_error(curr_src_idx)
+                print test_current_shapes
+                
+                # Change the shape
+                if (error and test_current_shapes[curr_src_idx][2 + dim_idx] > 1):
+                    # Error, but still variants left to try, so decrease the dimension
+                    test_current_shapes[curr_src_idx][2 + dim_idx] = test_current_shapes[curr_src_idx][2 + dim_idx] - 1
+                elif (error and test_current_shapes[curr_src_idx][2 + dim_idx] == 1):
+                    # Reached minimum shape, reset source and go to previous source
+                    test_current_shapes[curr_src_idx][2 + dim_idx] = test_max_shapes[curr_src_idx][2 + dim_idx]
+                    curr_src_idx = curr_src_idx - 1
+                    if (curr_src_idx == -1):
+                        # Tested all shapes, found no valid combination of source shapes
+                        # Unsuccessful return
+                        return False
+                else:
+                    if (not error and curr_src_idx == len(test_sources) - 1):
+                        # No error at last source element, stop testing for this dimension
+                        break
+                    else:
+                        # Current source has no error, advance to the next source
+                        curr_src_idx = (curr_src_idx + 1) % len(test_sources)
+                                    
+    # Set the shapes
+    for src_idx in range(0, len(test_sources)):
+        test_sources[src_idx].fn.params['dim'] = test_current_shapes[src_idx]
+    
+    # Successful return
+    return True
+        
+
+class Graph:
+    def __init__(self):
+        self.nodes = []
+        self.edges = []
+        
+    def reset_error(self):
+        for edge in self.edges:
+            edge.error = False
+        for node in self.nodes:
+            node.error = False    
+           
+    def has_error(self, index):
+        error = False
+        for edge in self.edges:
+            edge.check_shape_errors()
+            error = error or edge.error
+        for node in self.nodes:
+            error = error or node.error
+        error = error or self.check_sink_errors(index)
+        return error
+            
+    def clear_shapes(self):
+        for edge in self.edges:
+            edge.shape = [[]]
+            edge.error = False
+        for node in self.nodes:
+            node.error = False
+        
+    def get_source_nodes(self):
+        source_nodes = []
+        for node in self.nodes:
+            if (len(node.in_edges) == 0):
+                # print(node.fn.type_name)
+                source_nodes = source_nodes + [node]
+        return source_nodes
+            
+    def get_sink_nodes(self):
+        sink_nodes = []
+        for node in self.nodes:
+            if (len(node.out_edges) == 0):
+                sink_nodes = sink_nodes + [node]
+        return sink_nodes
+    
+    def check_sink_errors(self, index):
+        error = False
+        sink_nodes = self.get_sink_nodes()
+        for sink in sink_nodes:
+            print sink.fn.type_name
+            if (sink.fn.type_name == 'Silence'):
+                # Nothing to check, silence terminates blobs of all shapes
+                pass
+            elif (sink.fn.type_name == 'SoftmaxWithLoss'):
+                # Blob 0: Of shape N x C x D x H x W
+                # Blob 1: Of shape N x 1 x D x H x W
+                prob_shape = []
+                label_shape = []
+                for idx in range(0, index + 1):
+                    for edge_idx in range(0, len(sink.in_edges)):
+                        other_shape = sink.in_edges[edge_idx].get_shape(idx)
+                        if (edge_idx == 0):
+                            if (len(prob_shape) > 0 and len(other_shape) > 0):
+                                error = error or not equal_shape(prob_shape, other_shape)
+                            elif (len(other_shape) > 0):
+                                prob_shape = other_shape
+                        elif (edge_idx == 1):
+                            if (len(label_shape) > 0 and len(other_shape) > 0):
+                                error = error or not equal_shape(label_shape, other_shape)
+                            elif (len(other_shape) > 0):
+                                label_shape = other_shape
+                
+                if (len(prob_shape) > 0 and len(label_shape) > 0): 
+                    error = error or not (equal_shape(prob_shape[2:], label_shape[2:]))
+                    error = error or not (prob_shape[0] == label_shape[0])
+                    error = error or not (prob_shape[1] > 1 and label_shape[1] == 1)
+                                
+            elif (sink.fn.type_name == 'EuclideanLoss'):
+                # For euclid, all input shapes should have the same dimension
+                # (prediction, target, scale)
+                ref_shape = []
+                for idx in range(0, index + 1):
+                    for i in range(0, len(sink.in_edges)):
+                        shape = sink.in_edges[i].get_shape(idx)
+                        if (len(ref_shape) == 0):
+                            ref_shape = shape
+                        elif (len(shape) > 0):
+                            error = error or not equal_shape(ref_shape, shape)
+            elif (sink.fn.type_name == 'MalisLoss'):              
+                # Blob 0: Of shape N x C x D x H x W
+                aff_prob_shape = []
+                # Blob 1: Of shape N x C x D x H x W
+                aff_shape = []
+                # Blob 2: Of shape N x 1 x D x H x W or N x 2 x D x H x W
+                components = []
+                # Blob 3: Of shape 1 x 1 x C x 3
+                nhood = []
+                
+                # Load and compare shapes
+                for idx in range(0, index + 1):
+                    for edge_idx in range(0, len(sink.in_edges)):
+                        other_shape = sink.in_edges[edge_idx].get_shape(idx)
+                        if (edge_idx == 0):
+                            if (len(aff_prob_shape) > 0 and len(other_shape) > 0):
+                                error = error or not equal_shape(aff_prob_shape, other_shape)
+                            elif (len(other_shape) > 0):
+                                aff_prob_shape = other_shape
+                        elif (edge_idx == 1):
+                            if (len(aff_shape) > 0 and len(other_shape) > 0):
+                                error = error or not equal_shape(aff_shape, other_shape)
+                            elif (len(other_shape) > 0):
+                                aff_shape = other_shape
+                        elif (edge_idx == 2):
+                            if (len(components) > 0 and len(other_shape) > 0):
+                                error = error or not equal_shape(components, other_shape)
+                            elif (len(other_shape) > 0):
+                                components = other_shape
+                        elif (edge_idx == 3):
+                            if (len(nhood) > 0 and len(other_shape) > 0):
+                                error = error or not equal_shape(nhood, other_shape)
+                            elif (len(other_shape) > 0):
+                                nhood = other_shape
+                
+                if (len(aff_prob_shape) > 0 and len(aff_shape) > 0 and len(components) > 0 and len(nhood) > 0):
+                    # Cross compare the shapes for validity according to the dimension rules for each shape
+                    error = error or not (len(nhood) == 4 and nhood[0] == 1 and nhood[1] == 1 and nhood[3] == 3)
+                    error = error or not (len(nhood) == 4 and len(aff_prob_shape) > 2 and len(aff_shape) > 2 and aff_prob_shape[1] == aff_shape[1] and aff_prob_shape[1] == nhood[2])
+                    error = error or not (len(components) > 2 and (components[1] == 1 or components[1] == 2))
+                    error = error or not (len(components) == len(aff_shape) and len(components) == len(aff_prob_shape))
+                    error = error or not (equal_shape(aff_shape, aff_prob_shape))
+                    error = error or not (equal_shape(aff_shape[2:], components[2:]))
+            else:
+                print('Unhandled sink: ' + sink.fn.type_name)
+                error = True
+            print error
+        return error
+        
+    def propagate_shape_forward(self, element, index, shape):
+        existing = self.contains(element)
+        if (type(element) == net_spec.Function):
+            for suboutp in existing.out_edges:
+                suboutp.set_shape(index, shape)
+                if (len(suboutp.get_shape(index)) > 0):
+                    for dst in suboutp.dsts:
+                        dst.propagate_shape_forward(index)
+        else:
+            existing.set_shape(index, shape)
+            if (len(existing.get_shape(index)) > 0):
+                for dst in existing.dsts:
+                    dst.propagate_shape_forward(index)
+    
+    def add_element(self, element):
+        existing = self.contains(element)
+        if (existing != None):
+            return existing
+        if (type(element) == net_spec.Function):
+            node = Node(self, element)
+            existing = node
+        else:
+            edge = Edge(self, element)
+            existing = edge
+        return existing
+            
+    def contains(self, element):
+        for node in self.nodes:
+            if (node.fn == element):
+                return node
+        for edge in self.edges:
+            if (edge.top == element):
+                return edge
+        return None
+        
+    def get_srcs(self, function):
+        srcs = []
+        node = self.contains(function)
+        if (node == None):
+            node = self.add_element(function)
+        srcs = srcs + [node]
+        return srcs
+    
+    def get_in_edges(self, inputs):
+        edges = []
+        for input in inputs:
+            edge = self.contains(input)
+            if (edge == None):
+                edge = self.add_element(input)
+            edges = edges + [edge]
+        return edges
+            
+class Node:
+    def __init__(self, graph, function):
+        graph.nodes = graph.nodes + [self]
+        self.fn = function
+        self.graph = graph
+        self.error = False
+        if (isinstance(function, Iterable)):
+            for subfunction in function:
+                self.in_edges = self.in_edges + graph.get_in_edges(subfunction.inputs)
+        else:
+            self.in_edges = graph.get_in_edges(function.inputs)
+            
+        self.out_edges = []
+        
+        for in_edge in self.in_edges:
+            in_edge.dsts = in_edge.dsts + [self]
+            
+    def propagate_shape_forward(self, index):
+        # print(self.fn.type_name)
+        if (self.fn.type_name == 'Convolution'):
+            pad = self.fn.params['pad'] if ('pad' in self.fn.params) else [0]
+            stride = self.fn.params['stride'] if ('stride' in self.fn.params) else [1]
+            dilation = self.fn.params['dilation'] if ('dilation' in self.fn.params) else [1]
+            kernel_size = self.fn.params['kernel_size'] if ('kernel_size' in self.fn.params) else [1]
+            num_output = self.fn.params['num_output'] if ('num_output' in self.fn.params) else [1]
+                        
+            for in_edge in self.in_edges:
+                shape = copy.deepcopy(in_edge.get_shape(index))
+                shape[1] = num_output
+                for i in range(2,len(shape)):
+                    j = i - 2
+                    input_dim = shape[i]
+                    kernel_extent = minidx(dilation, j) * (minidx(kernel_size, j) - 1) + 1
+                    output_dim = (input_dim + 2 * minidx(pad, j) - kernel_extent) / minidx(stride, j) + 1
+                    test_input_dim = ((output_dim - 1) * minidx(stride, j)) + kernel_extent - 2 * minidx(pad, j)
+                    shape[i] = output_dim
+                    
+                    # Verify FW-BW shape conformity
+                    if (not input_dim == test_input_dim):
+                        self.error = True
+                    
+                for out_edge in self.out_edges:
+                    out_edge.set_shape(index, shape)
+                break
+        
+        elif (self.fn.type_name == 'Pooling'):
+            pad = self.fn.params['pad'] if ('pad' in self.fn.params) else [0]
+            stride = self.fn.params['stride'] if ('stride' in self.fn.params) else [1]
+            dilation = self.fn.params['dilation'] if ('dilation' in self.fn.params) else [1]
+            kernel_size = self.fn.params['kernel_size'] if ('kernel_size' in self.fn.params) else [1]
+            
+            for in_edge in self.in_edges:
+                shape = copy.deepcopy(in_edge.get_shape(index))
+                for i in range(2,len(shape)):
+                    j = i - 2
+                    ext_kernel_shape = (minidx(kernel_size, j) - 1) * minidx(dilation, j) + 1
+                    pooled_size = int(math.ceil(float(shape[i] + 2 * minidx(pad, j) - ext_kernel_shape) / minidx(stride, j))) + 1
+                    test_size = (pooled_size - 1) * minidx(stride, j) + ext_kernel_shape - 2 * minidx(pad, j)                    
+                    
+                    # Verify FW-BW shape conformity
+                    if (not shape[i] == test_size):
+                        self.error = True
+                    
+                    if (minidx(pad, j) > 0):
+                        if (pooled_size - 1) * minidx(stride, i) >= shape[i] + minidx(pad, j):
+                            --pooled_size
+                    shape[i] = pooled_size
+            
+        elif (self.fn.type_name == 'MergeCrop'):
+            shape = []
+            shape_A = self.in_edges[0].get_shape(index)
+            shape_B = self.in_edges[1].get_shape(index)
+
+            if (len(shape_A) > 0 and 'op' in self.fn.params and self.fn.params['op'] == 'add'):
+                shape = copy.deepcopy(shape_A)
+            elif (len(shape_A) > 0 and len(shape_B) > 0):
+                shape = copy.deepcopy(shape_A)
+                shape[1] = shape[1] + shape_B[1]
+                
+            if (len(shape_A) > 0 and len(shape_B) > 0):
+                for i in range(2,len(shape_A)):
+                    if (shape_A[i] > shape_B[i]):
+                        self.error = True
+            
+            if (len(shape) > 0):
+                for out_edge in self.out_edges:
+                    out_edge.set_shape(index, shape)
+                
+        # Shape stays the same
+        else:
+            for in_edge in self.in_edges:
+                for out_edge in self.out_edges:
+                    out_edge.set_shape(index, copy.deepcopy(in_edge.get_shape(index)))
+                break
+            
+        # Propagate forward
+        for out_edge in self.out_edges:
+            if (len(out_edge.get_shape(index)) > 0):
+                for dst in out_edge.dsts:
+                    dst.propagate_shape_forward(index)
+        
+class Edge:
+    def __init__(self, graph, top):
+        graph.edges = graph.edges + [self]
+        self.top = top
+        self.graph = None
+        self.srcs = []
+        self.error = False
+        if (isinstance(top, Iterable)):
+            for subtop in top:
+                self.srcs = self.srcs + graph.get_srcs(subtop.fn)
+        else:
+            self.srcs = graph.get_srcs(top.fn)
+        self.dsts = []
+        self.shape = [[]]
+        for src in self.srcs:
+            src.out_edges = src.out_edges + [self]
+    
+    def get_shape(self, index):
+        while (len(self.shape)- 1 < index):
+            self.shape = self.shape + [[]]
+        return copy.deepcopy(self.shape[index])
+        
+    def set_shape(self, index, shape):
+        while (len(self.shape)- 1 < index):
+            self.shape = self.shape + [[]]
+        self.shape[index] = copy.deepcopy(shape)
+        
+    def check_shape_errors(self):
+        error = False
+        ref_shape = []
+        for shape in self.shape:
+            if (len(ref_shape) == 0):
+                ref_shape = shape
+            else:
+                for i in range(0, min(len(ref_shape), len(shape))):
+                    error = error or (not ref_shape[i] == shape[i])
+                    error = error or (ref_shape[i] < 1 or shape[i] < 1)
+        self.error = self.error or error
+
+class Stack:
+    def __init__(self):
+        self.__storage = []
+        
+    def __len__(self):
+        return len(self.__storage)
+
+    def isEmpty(self):
+        return len(self.__storage) == 0
+
+    def push(self,p):
+        self.__storage.append(p)
+
+    def pop(self):
+        return self.__storage.pop()
     
     
+def minidx(data, index):
+    return data[min(len(data) - 1, index)]
+
+def equal_shape(shape_A, shape_B):
+    equal = True
+    if (not len(shape_A) == len(shape_B)):
+        equal = False
+    else:
+        equal = True
+        for i in range(0, len(shape_A)):
+            equal = equal and shape_A[i] == shape_B[i]
+    return equal
 
 metalayers = MetaLayers()

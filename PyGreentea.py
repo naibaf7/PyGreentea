@@ -92,6 +92,7 @@ import caffe as caffe
 # Import the network generator
 import pygreentea_layers as netgen
 from pygreentea_layers import metalayers
+from pygreentea_layers import fix_input_dims
 
 # Import Malis
 import malis as malis
