@@ -15,12 +15,8 @@ import numpy as np
 import png
 from scipy import io
 
-
-# Set this to True after importing this module to prevent multithreading
-USE_ONE_THREAD = False
-
-# Set this to True after importing this module to debug
-DEBUG = False
+# Load the configuration file
+from .. import config
 
 # Determine where PyGreentea is
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
@@ -34,59 +30,8 @@ sys.path.append(cmdpath)
 
 from numpy import float32, int32, uint8
 
-# Load the configuration file
-import config
-
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-
-# Direct call to PyGreentea, set up everything
-if __name__ == "__main__":
-    # Load the setup module
-    import setup
-
-    if (pygtpath != cmdpath):
-        os.chdir(pygtpath)
-    
-    if (os.geteuid() != 0):
-        print(bcolors.WARNING + "PyGreentea setup should probably be executed with root privileges!" + bcolors.ENDC)
-    
-    if config.install_packages:
-        print(bcolors.HEADER + ("==== PYGT: Installing OS packages ====").ljust(80,"=") + bcolors.ENDC)
-        setup.install_dependencies()
-    
-    print(bcolors.HEADER + ("==== PYGT: Updating Caffe/Greentea repository ====").ljust(80,"=") + bcolors.ENDC)
-    setup.clone_caffe(config.caffe_path, config.clone_caffe, config.update_caffe)
-    
-    print(bcolors.HEADER + ("==== PYGT: Updating Malis repository ====").ljust(80,"=") + bcolors.ENDC)
-    setup.clone_malis(config.malis_path, config.clone_malis, config.update_malis)
-    
-    if config.compile_caffe:
-        print(bcolors.HEADER + ("==== PYGT: Compiling Caffe/Greentea ====").ljust(80,"=") + bcolors.ENDC)
-        setup.compile_caffe(config.caffe_path)
-    
-    if config.compile_malis:
-        print(bcolors.HEADER + ("==== PYGT: Compiling Malis ====").ljust(80,"=") + bcolors.ENDC)
-        setup.compile_malis(config.malis_path)
-        
-    if (pygtpath != cmdpath):
-        os.chdir(cmdpath)
-    
-    print(bcolors.OKGREEN + ("==== PYGT: Setup finished ====").ljust(80,"=") + bcolors.ENDC)
-    sys.exit(0)
-
-
 # Import Caffe
-caffe_parent_path = os.path.dirname(os.path.dirname(__file__))
-caffe_path = os.path.join(caffe_parent_path, 'caffe_gt', 'python')
-sys.path.append(caffe_path)
+sys.path.append(config.caffe_path)
 import caffe as caffe
 
 # Import the network generator
@@ -95,6 +40,7 @@ from pygreentea_layers import metalayers
 from pygreentea_layers import fix_input_dims
 
 # Import Malis
+sys.path.append(config.malis_path)
 import malis as malis
 
 
@@ -748,7 +694,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         start = time.time()
         if (options.test_net != None and i % options.test_interval == 1):
             test_eval.evaluate(i)
-            if USE_ONE_THREAD:
+            if config.use_one_thread:
                 # after testing finishes, switch back to the training device
                 caffe.select_device(options.train_device, False)
         dataset_index, offsets = make_dataset_offset(data_arrays)
@@ -762,7 +708,7 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
         if 'transform' in dataset:
             # transform the input
             # assumes that the original input pixel values are scaled between (0,1)
-            if DEBUG:
+            if config.debug:
                 print("data_slice stats, pre-transform: min", data_slice.min(), "mean", data_slice.mean(),
                       "max", data_slice.max())
             lo, hi = dataset['transform']['scale']

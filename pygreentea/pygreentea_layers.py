@@ -388,18 +388,17 @@ def fix_input_dims(net, source_layer, shape_coupled=[], stage=None, phase=None):
                     test_current_shapes[curr_src_idx] = test_current_shapes[curr_src_idx] + [test_max_shapes[curr_src_idx][2 + dim_idx]]
                  
                 # Forward the values
-                graph.reset_error()
-                graph.propagate_shape_forward(test_sources[curr_src_idx].fn, curr_src_idx, test_current_shapes[curr_src_idx])
-                
+                error = False
+                graph.clear_shapes()
+                for idx in range(0, curr_src_idx + 1):
+                    graph.propagate_shape_forward(test_sources[idx].fn, idx, test_current_shapes[idx])
+                    error = error or graph.has_error(curr_src_idx)
+
                 # Test the shape
-                error = graph.has_error(curr_src_idx)
                 print test_current_shapes
+                print "Valid shape: " + str(not error)
                 
-                # Change the shape
-                if (error and test_current_shapes[curr_src_idx][2 + dim_idx] > 1):
-                    # Error, but still variants left to try, so decrease the dimension
-                    test_current_shapes[curr_src_idx][2 + dim_idx] = test_current_shapes[curr_src_idx][2 + dim_idx] - 1
-                elif (error and test_current_shapes[curr_src_idx][2 + dim_idx] == 1):
+                if (error and test_current_shapes[curr_src_idx][2 + dim_idx] == 1):
                     # Reached minimum shape, reset source and go to previous source
                     test_current_shapes[curr_src_idx][2 + dim_idx] = test_max_shapes[curr_src_idx][2 + dim_idx]
                     curr_src_idx = curr_src_idx - 1
@@ -407,8 +406,13 @@ def fix_input_dims(net, source_layer, shape_coupled=[], stage=None, phase=None):
                         # Tested all shapes, found no valid combination of source shapes
                         # Unsuccessful return
                         return False
-                else:
-                    if (not error and curr_src_idx == len(test_sources) - 1):
+                # Change the shape
+                if (error and test_current_shapes[curr_src_idx][2 + dim_idx] > 1):
+                    # Error, but still variants left to try, so decrease the dimension
+                    test_current_shapes[curr_src_idx][2 + dim_idx] = test_current_shapes[curr_src_idx][2 + dim_idx] - 1
+                
+                if (not error):
+                    if (curr_src_idx == len(test_sources) - 1):
                         # No error at last source element, stop testing for this dimension
                         break
                     else:
@@ -418,7 +422,7 @@ def fix_input_dims(net, source_layer, shape_coupled=[], stage=None, phase=None):
     # Set the shapes
     for src_idx in range(0, len(test_sources)):
         test_sources[src_idx].fn.params['dim'] = test_current_shapes[src_idx]
-    
+        
     # Successful return
     return True
         
@@ -463,6 +467,7 @@ class Graph:
         sink_nodes = []
         for node in self.nodes:
             if (len(node.out_edges) == 0):
+                # print(node.fn.type_name)
                 sink_nodes = sink_nodes + [node]
         return sink_nodes
     
@@ -470,7 +475,6 @@ class Graph:
         error = False
         sink_nodes = self.get_sink_nodes()
         for sink in sink_nodes:
-            print sink.fn.type_name
             if (sink.fn.type_name == 'Silence'):
                 # Nothing to check, silence terminates blobs of all shapes
                 pass
@@ -497,7 +501,10 @@ class Graph:
                     error = error or not (equal_shape(prob_shape[2:], label_shape[2:]))
                     error = error or not (prob_shape[0] == label_shape[0])
                     error = error or not (prob_shape[1] > 1 and label_shape[1] == 1)
-                                
+                
+                # print prob_shape
+                # print label_shape
+                
             elif (sink.fn.type_name == 'EuclideanLoss'):
                 # For euclid, all input shapes should have the same dimension
                 # (prediction, target, scale)
@@ -555,7 +562,7 @@ class Graph:
             else:
                 print('Unhandled sink: ' + sink.fn.type_name)
                 error = True
-            print error
+            # print error
         return error
         
     def propagate_shape_forward(self, element, index, shape):
@@ -598,7 +605,7 @@ class Graph:
         node = self.contains(function)
         if (node == None):
             node = self.add_element(function)
-        srcs = srcs + [node]
+        srcs.append(node)
         return srcs
     
     def get_in_edges(self, inputs):
@@ -607,35 +614,35 @@ class Graph:
             edge = self.contains(input)
             if (edge == None):
                 edge = self.add_element(input)
-            edges = edges + [edge]
+            edges.append(edge)
         return edges
             
 class Node:
     def __init__(self, graph, function):
-        graph.nodes = graph.nodes + [self]
+        graph.nodes.append(self)
         self.fn = function
         self.graph = graph
+        self.in_edges = []
         self.error = False
         if (isinstance(function, Iterable)):
             for subfunction in function:
-                self.in_edges = self.in_edges + graph.get_in_edges(subfunction.inputs)
+                self.in_edges.extend(graph.get_in_edges(subfunction.inputs))
         else:
-            self.in_edges = graph.get_in_edges(function.inputs)
+            self.in_edges.extend(graph.get_in_edges(function.inputs))
             
         self.out_edges = []
         
         for in_edge in self.in_edges:
-            in_edge.dsts = in_edge.dsts + [self]
+            in_edge.dsts.append(self)
             
     def propagate_shape_forward(self, index):
-        # print(self.fn.type_name)
         if (self.fn.type_name == 'Convolution'):
             pad = self.fn.params['pad'] if ('pad' in self.fn.params) else [0]
             stride = self.fn.params['stride'] if ('stride' in self.fn.params) else [1]
             dilation = self.fn.params['dilation'] if ('dilation' in self.fn.params) else [1]
             kernel_size = self.fn.params['kernel_size'] if ('kernel_size' in self.fn.params) else [1]
             num_output = self.fn.params['num_output'] if ('num_output' in self.fn.params) else [1]
-                        
+                      
             for in_edge in self.in_edges:
                 shape = copy.deepcopy(in_edge.get_shape(index))
                 shape[1] = num_output
@@ -651,6 +658,31 @@ class Node:
                     if (not input_dim == test_input_dim):
                         self.error = True
                     
+                for out_edge in self.out_edges:
+                    out_edge.set_shape(index, shape)
+                break
+        
+        elif (self.fn.type_name == 'Deconvolution'):
+            pad = self.fn.params['convolution_param']['pad'] if ('convolution_param' in self.fn.params and 'pad' in self.fn.params['convolution_param']) else [0]
+            stride = self.fn.params['convolution_param']['stride'] if ('convolution_param' in self.fn.params and 'stride' in self.fn.params['convolution_param']) else [1]
+            dilation = self.fn.params['convolution_param']['dilation'] if ('convolution_param' in self.fn.params and 'dilation' in self.fn.params['convolution_param']) else [1]
+            kernel_size = self.fn.params['convolution_param']['kernel_size'] if ('convolution_param' in self.fn.params and 'kernel_size' in self.fn.params['convolution_param']) else [1]
+            num_output = self.fn.params['convolution_param']['num_output'] if ('convolution_param' in self.fn.params and 'num_output' in self.fn.params['convolution_param']) else 1
+                        
+            for in_edge in self.in_edges:
+                shape = copy.deepcopy(in_edge.get_shape(index))
+                shape[1] = num_output
+                for i in range(2,len(shape)):
+                    j = i - 2
+                    input_dim = shape[i]
+                    kernel_extent = minidx(dilation, j) * (minidx(kernel_size, j) - 1) + 1
+                    output_dim = ((input_dim - 1) * minidx(stride, j)) + kernel_extent - 2 * minidx(pad, j)
+                    test_input_dim = (output_dim + 2 * minidx(pad, j) - kernel_extent) / minidx(stride, j) + 1
+                    shape[i] = output_dim
+                                       
+                    # Verify FW-BW shape conformity
+                    if (not input_dim == test_input_dim):
+                        self.error = True
                 for out_edge in self.out_edges:
                     out_edge.set_shape(index, shape)
                 break
@@ -677,6 +709,10 @@ class Node:
                         if (pooled_size - 1) * minidx(stride, i) >= shape[i] + minidx(pad, j):
                             --pooled_size
                     shape[i] = pooled_size
+                    
+            if (len(shape) > 0):
+                for out_edge in self.out_edges:
+                    out_edge.set_shape(index, shape)
             
         elif (self.fn.type_name == 'MergeCrop'):
             shape = []
@@ -687,7 +723,7 @@ class Node:
                 shape = copy.deepcopy(shape_A)
             elif (len(shape_A) > 0 and len(shape_B) > 0):
                 shape = copy.deepcopy(shape_A)
-                shape[1] = shape[1] + shape_B[1]
+                shape[1] = shape_A[1] + shape_B[1]
                 
             if (len(shape_A) > 0 and len(shape_B) > 0):
                 for i in range(2,len(shape_A)):
@@ -713,20 +749,20 @@ class Node:
         
 class Edge:
     def __init__(self, graph, top):
-        graph.edges = graph.edges + [self]
+        graph.edges.append(self)
         self.top = top
         self.graph = None
         self.srcs = []
         self.error = False
         if (isinstance(top, Iterable)):
             for subtop in top:
-                self.srcs = self.srcs + graph.get_srcs(subtop.fn)
+                self.srcs.extend(graph.get_srcs(subtop.fn))
         else:
-            self.srcs = graph.get_srcs(top.fn)
+            self.srcs.extend(graph.get_srcs(top.fn))
         self.dsts = []
         self.shape = [[]]
         for src in self.srcs:
-            src.out_edges = src.out_edges + [self]
+            src.out_edges.append(self)
     
     def get_shape(self, index):
         while (len(self.shape)- 1 < index):
