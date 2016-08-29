@@ -326,12 +326,28 @@ def implement_usknet(bottom, netconf, unetconf, return_blobs_only=True):
     else:
         return blobs[-1], fmaps[-1]
     
-def fix_input_dims(net, source_layer, shape_coupled=[], stage=None, phase=None):
+def fix_input_dims(net, primary_source_layer, source_layers, shape_coupled=[], phase=None, stage=None):
+    """
+    This function takes as input:
+    net - The network
+    primary_source_layer - The "leading" input layer to start testing with
+    source_layers - A list of other inputs to test (note: the nhood input is static and not spatially testable, thus excluded here)
+    shape_coupled - A list of spatial dependencies; here [-1, 0] means the Y axis is a free parameter, and the X axis should be identical to the Y axis.
+    (The first spatial axis (Z in 3D, Y in 2D and X in 1D) is ALWAYS a free parameter)
+    phase - Only include layers of a certain phase for the input fix (0 or 1)
+    stage - Only include layers of certain stages for the input fix (list of strings)
+    Returns True if successful and False otherwise.
+    """
+
     graph = Graph()
     
     # Resolve the source layer function
-    if (type(source_layer) == net_spec.Top):
-        source_layer = source_layer.fn
+    if (type(primary_source_layer) == net_spec.Top):
+        primary_source_layer = primary_source_layer.fn
+    
+    for i in range(0, len(source_layers)):
+        if (type(source_layers[i]) == net_spec.Top):
+            source_layers[i] = source_layers[i].fn
 
     for name, top in six.iteritems(net.tops):
         if (isinstance(top, Iterable) and len(top) > 0):
@@ -350,8 +366,8 @@ def fix_input_dims(net, source_layer, shape_coupled=[], stage=None, phase=None):
     sinks = graph.get_sink_nodes()
     
     source_shape = []
-    if ('dim' in source_layer.params):
-        source_shape = source_layer.params['dim']
+    if ('dim' in primary_source_layer.params):
+        source_shape = primary_source_layer.params['dim']
     
     dims = len(source_shape) - 2
     
@@ -360,12 +376,13 @@ def fix_input_dims(net, source_layer, shape_coupled=[], stage=None, phase=None):
     
     for source in sources:
         if ('dim' in source.fn.params):
-            if (source.fn == source_layer):
+            if (source.fn == primary_source_layer):
                 test_sources = [source] + test_sources
                 test_max_shapes = [source.fn.params['dim']] + test_max_shapes
             else:
-                test_sources = test_sources + [source]
-                test_max_shapes = test_max_shapes + [source.fn.params['dim']]
+                if (source.fn in source_layers):
+                    test_sources = test_sources + [source]
+                    test_max_shapes = test_max_shapes + [source.fn.params['dim']]
 
     test_current_shapes = [[] for i in range(0,len(test_sources))]
     
@@ -513,7 +530,7 @@ class Graph:
                     for i in range(0, len(sink.in_edges)):
                         shape = sink.in_edges[i].get_shape(idx)
                         if (len(ref_shape) == 0):
-                            ref_shape = shape
+                            ref_shape = copy.deepcopy(shape)
                         elif (len(shape) > 0):
                             error = error or not equal_shape(ref_shape, shape)
             elif (sink.fn.type_name == 'MalisLoss'):              
@@ -523,8 +540,6 @@ class Graph:
                 aff_shape = []
                 # Blob 2: Of shape N x 1 x D x H x W or N x 2 x D x H x W
                 components = []
-                # Blob 3: Of shape 1 x 1 x C x 3
-                nhood = []
                 
                 # Load and compare shapes
                 for idx in range(0, index + 1):
@@ -545,20 +560,18 @@ class Graph:
                                 error = error or not equal_shape(components, other_shape)
                             elif (len(other_shape) > 0):
                                 components = other_shape
-                        elif (edge_idx == 3):
-                            if (len(nhood) > 0 and len(other_shape) > 0):
-                                error = error or not equal_shape(nhood, other_shape)
-                            elif (len(other_shape) > 0):
-                                nhood = other_shape
                 
-                if (len(aff_prob_shape) > 0 and len(aff_shape) > 0 and len(components) > 0 and len(nhood) > 0):
                     # Cross compare the shapes for validity according to the dimension rules for each shape
-                    error = error or not (len(nhood) == 4 and nhood[0] == 1 and nhood[1] == 1 and nhood[3] == 3)
-                    error = error or not (len(nhood) == 4 and len(aff_prob_shape) > 2 and len(aff_shape) > 2 and aff_prob_shape[1] == aff_shape[1] and aff_prob_shape[1] == nhood[2])
-                    error = error or not (len(components) > 2 and (components[1] == 1 or components[1] == 2))
-                    error = error or not (len(components) == len(aff_shape) and len(components) == len(aff_prob_shape))
-                    error = error or not (equal_shape(aff_shape, aff_prob_shape))
-                    error = error or not (equal_shape(aff_shape[2:], components[2:]))
+                    if (len(components) > 0):
+                        error = error or not (len(components) > 2 and (components[1] == 1 or components[1] == 2))
+                    if (len(components) > 0 and len(aff_shape) > 0 and len(aff_prob_shape) > 0):
+                        error = error or not (len(components) == len(aff_shape) and len(components) == len(aff_prob_shape))
+                    if (len(aff_shape) > 0 and len(aff_prob_shape) > 0):
+                        error = error or not (equal_shape(aff_shape, aff_prob_shape))
+                    if (len(aff_shape) > 0 and len(components) > 0):
+                        error = error or not (equal_shape(aff_shape[2:], components[2:]))
+                    if (len(aff_prob_shape) > 0 and len(components) > 0):
+                        error = error or not (equal_shape(aff_prob_shape[2:], components[2:]))
             else:
                 print('Unhandled sink: ' + sink.fn.type_name)
                 error = True

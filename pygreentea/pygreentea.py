@@ -9,6 +9,21 @@ import threading
 import multiprocessing
 import concurrent.futures
 import time
+import pygreentea
+from setup import pygtpath
+
+# Determine where PyGreentea is
+pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
+rootpath = os.path.dirname(pygtpath)
+
+# Determine where PyGreentea gets called from
+cmdpath = os.getcwd()
+
+sys.path.append(pygtpath)
+sys.path.append(pygtpath + '/..')
+sys.path.append(cmdpath)
+
+print(os.path.dirname(pygreentea.__file__))
 
 import h5py
 import numpy as np
@@ -16,31 +31,31 @@ import png
 from scipy import io
 
 # Load the configuration file
-from .. import config
-
-# Determine where PyGreentea is
-pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
-
-# Determine where PyGreentea gets called from
-cmdpath = os.getcwd()
-
-sys.path.append(pygtpath)
-sys.path.append(cmdpath)
-
+import config
 
 from numpy import float32, int32, uint8
 
 # Import Caffe
-sys.path.append(config.caffe_path)
+pycaffepath = ''
+if (os.path.isabs(config.caffe_path)):
+    pycaffepath = config.caffe_path + '/python'
+else:
+    pycaffepath = rootpath + '/' + config.caffe_path + '/python'
+
+sys.path.append(pycaffepath)
+   
 import caffe as caffe
 
 # Import the network generator
-import pygreentea_layers as netgen
-from pygreentea_layers import metalayers
-from pygreentea_layers import fix_input_dims
+import netgen
+from netgen import metalayers
+from netgen import fix_input_dims
 
 # Import Malis
-sys.path.append(config.malis_path)
+if (os.path.isabs(config.malis_path)):
+    sys.path.append(config.malis_path)
+else:
+    sys.path.append(pygtpath+'/'+config.malis_path)
 import malis as malis
 
 
@@ -59,14 +74,14 @@ class NetInputWrapper:
             if (self.input_keys[i] in self.net.layers_dict):
                 self.input_layers += [self.net.layers_dict[self.input_keys[i]]]
         
-        if DEBUG:
+        if config.debug:
             print("Input layers: ", len(self.input_layers))
         
         for i in range(0,len(shapes)):
             # Pre-allocate arrays that will persist with the network
             self.inputs += [np.zeros(tuple(self.shapes[i]), dtype=float32)]
                 
-        if DEBUG:
+        if config.debug:
             print("Shapes: ", len(shapes))
         
     def setInputs(self, data):      

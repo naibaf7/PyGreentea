@@ -26,7 +26,7 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-# Direct call to PyGreentea, set up everything
+# Direct call to setup, set up everything
 if __name__ == "__main__":
     # Load the setup module
     import setup
