@@ -20,15 +20,15 @@ from pygreentea.pygreentea import metalayers as ML
 net = caffe.NetSpec()
 
 # Data input layer
-net.data, net.datai = L.MemoryData(dim=[1, 1, 692, 692], ntop=2)
+net.data, net.datai = L.MemoryData(dim=[1, 1], ntop=2)
 # Label input layer
-net.aff_label, net.aff_labeli = L.MemoryData(dim=[1, 2, 700, 700], ntop=2, include=[dict(phase=0)])
+net.aff_label, net.aff_labeli = L.MemoryData(dim=[1, 2], ntop=2, include=[dict(phase=0)])
 # Components label layer 
-net.comp_label, net.comp_labeli = L.MemoryData(dim=[1, 2, 700, 700], ntop=2, include=[dict(phase=0, stage='euclid')])
+net.comp_label, net.comp_labeli = L.MemoryData(dim=[1, 2], ntop=2, include=[dict(phase=0, stage='euclid')])
 # Affinity label input layer
-net.smax_label, net.smax_labeli = L.MemoryData(dim=[1, 1, 700, 700], ntop=2, include=[dict(phase=0)])
+net.smax_label, net.smax_labeli = L.MemoryData(dim=[1, 1], ntop=2, include=[dict(phase=0)])
 # Scale input layer
-net.scale, net.scalei = L.MemoryData(dim=[1, 2, 700, 700], ntop=2, include=[dict(phase=0, stage='euclid')])
+net.scale, net.scalei = L.MemoryData(dim=[1, 2], ntop=2, include=[dict(phase=0, stage='euclid')])
 # Silence the not needed data and label integer values
 net.nhood, net.nhoodi = L.MemoryData(dim=[1, 1, 2, 3], ntop=2, include=[dict(phase=0, stage='malis')])
 
@@ -62,10 +62,13 @@ net.smax_loss = L.SoftmaxWithLoss(net.smax_out, net.smax_label, ntop=0, include=
 
 # This function takes as input:
 # - The network
-# - The "leading" input layer to start testing with
 # - A list of other inputs to test (note: the nhood input is static and not spatially testable, thus excluded here)
+# - A list of the maximal shapes for each input
 # - A list of spatial dependencies; here [-1, 0] means the Y axis is a free parameter, and the X axis should be identical to the Y axis.
-pygt.fix_input_dims(net, net.data, [net.aff_label, net.comp_label, net.smax_label, net.scale], shape_coupled=[-1, 0])
+pygt.fix_input_dims(net,
+                    [net.data, net.aff_label, net.comp_label, net.smax_label, net.scale],
+                    max_shapes = [[692,692],[700,700],[700,700],[700,700],[700,700]],
+                    shape_coupled = [-1, 0])
 
 
 protonet = net.to_proto()

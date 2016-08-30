@@ -94,11 +94,12 @@ layer {
   type: "Silence"
   bottom: "datai"
   bottom: "aff_labeli"
+  bottom: "comp_labeli"
   bottom: "smax_labeli"
-  bottom: "scalei"
+  bottom: "nhoodi"
   include {
     phase: TRAIN
-    stage: "euclid"
+    stage: "malis"
   }
 }
 layer {
@@ -106,12 +107,11 @@ layer {
   type: "Silence"
   bottom: "datai"
   bottom: "aff_labeli"
-  bottom: "comp_labeli"
   bottom: "smax_labeli"
-  bottom: "nhoodi"
+  bottom: "scalei"
   include {
     phase: TRAIN
-    stage: "malis"
+    stage: "euclid"
   }
 }
 layer {

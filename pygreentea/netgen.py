@@ -326,12 +326,12 @@ def implement_usknet(bottom, netconf, unetconf, return_blobs_only=True):
     else:
         return blobs[-1], fmaps[-1]
     
-def fix_input_dims(net, primary_source_layer, source_layers, shape_coupled=[], phase=None, stage=None):
+def fix_input_dims(net, source_layers, max_shapes=[], shape_coupled=[], phase=None, stage=None):
     """
     This function takes as input:
     net - The network
-    primary_source_layer - The "leading" input layer to start testing with
     source_layers - A list of other inputs to test (note: the nhood input is static and not spatially testable, thus excluded here)
+    max_shapes - Maximum spatial dimensions for each source layer
     shape_coupled - A list of spatial dependencies; here [-1, 0] means the Y axis is a free parameter, and the X axis should be identical to the Y axis.
     (The first spatial axis (Z in 3D, Y in 2D and X in 1D) is ALWAYS a free parameter)
     phase - Only include layers of a certain phase for the input fix (0 or 1)
@@ -341,10 +341,7 @@ def fix_input_dims(net, primary_source_layer, source_layers, shape_coupled=[], p
 
     graph = Graph()
     
-    # Resolve the source layer function
-    if (type(primary_source_layer) == net_spec.Top):
-        primary_source_layer = primary_source_layer.fn
-    
+    # Resolve the source layer functions   
     for i in range(0, len(source_layers)):
         if (type(source_layers[i]) == net_spec.Top):
             source_layers[i] = source_layers[i].fn
@@ -365,24 +362,23 @@ def fix_input_dims(net, primary_source_layer, source_layers, shape_coupled=[], p
     sources = graph.get_source_nodes()
     sinks = graph.get_sink_nodes()
     
-    source_shape = []
-    if ('dim' in primary_source_layer.params):
-        source_shape = primary_source_layer.params['dim']
-    
-    dims = len(source_shape) - 2
-    
     test_sources = []
     test_max_shapes = []
     
-    for source in sources:
-        if ('dim' in source.fn.params):
-            if (source.fn == primary_source_layer):
-                test_sources = [source] + test_sources
-                test_max_shapes = [source.fn.params['dim']] + test_max_shapes
-            else:
-                if (source.fn in source_layers):
+    dims = 0
+    
+    for i in range(0, len(source_layers)):
+        source_layer = source_layers[i]
+        for j in range(0, len(sources)):
+            source = sources[j]
+            if ('dim' in source.fn.params):
+                if (source.fn == source_layer):
                     test_sources = test_sources + [source]
-                    test_max_shapes = test_max_shapes + [source.fn.params['dim']]
+                    test_max_shape = source.fn.params['dim']
+                    if (len(max_shapes) > i):
+                        test_max_shape = test_max_shape + max_shapes[i]
+                    dims = max(dims, len(test_max_shape) - 2)
+                    test_max_shapes = test_max_shapes + [test_max_shape]
 
     test_current_shapes = [[] for i in range(0,len(test_sources))]
     
@@ -393,15 +389,17 @@ def fix_input_dims(net, primary_source_layer, source_layers, shape_coupled=[], p
         curr_src_idx = 0
         if (dim_idx > 0 and len(shape_coupled) >= dim_idx and shape_coupled[dim_idx] > -1):
             for src_idx in range(0, len(test_sources)):
-                # Copy the shape from the other dimension
-                test_current_shapes[src_idx] = test_current_shapes[src_idx] + [copy.deepcopy(test_current_shapes[src_idx][shape_coupled[dim_idx] + 2])]
+                # Check if this source even has one dimension more or not
+                if (len(test_current_shapes[src_idx]) < len(test_max_shapes[src_idx])):
+                    # Copy the shape from the other dimension
+                    test_current_shapes[src_idx] = test_current_shapes[src_idx] + [copy.deepcopy(test_current_shapes[src_idx][shape_coupled[dim_idx] + 2])]
         else:
             # Test each source
             while (True):
                 # Initialize the source shape
                 if (len(test_current_shapes[curr_src_idx]) == 0):
                     test_current_shapes[curr_src_idx] = [test_max_shapes[curr_src_idx][i] for i in range(0, 2 + dim_idx + 1)]
-                elif (len(test_current_shapes[curr_src_idx]) < 2 + dim_idx + 1):
+                elif ((len(test_current_shapes[curr_src_idx]) < 2 + dim_idx + 1) and (len(test_current_shapes[src_idx]) < len(test_max_shapes[src_idx]))):
                     test_current_shapes[curr_src_idx] = test_current_shapes[curr_src_idx] + [test_max_shapes[curr_src_idx][2 + dim_idx]]
                  
                 # Forward the values
@@ -415,9 +413,10 @@ def fix_input_dims(net, primary_source_layer, source_layers, shape_coupled=[], p
                 print test_current_shapes
                 print "Valid shape: " + str(not error)
                 
-                if (error and test_current_shapes[curr_src_idx][2 + dim_idx] == 1):
+                if (error and ((len(test_current_shapes) - 2 <= dim_idx) or (test_current_shapes[curr_src_idx][2 + dim_idx] == 1))):
                     # Reached minimum shape, reset source and go to previous source
-                    test_current_shapes[curr_src_idx][2 + dim_idx] = test_max_shapes[curr_src_idx][2 + dim_idx]
+                    if (len(test_current_shapes) - 2 > dim_idx):
+                        test_current_shapes[curr_src_idx][2 + dim_idx] = test_max_shapes[curr_src_idx][2 + dim_idx]
                     curr_src_idx = curr_src_idx - 1
                     if (curr_src_idx == -1):
                         # Tested all shapes, found no valid combination of source shapes
