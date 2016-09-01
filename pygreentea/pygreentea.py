@@ -600,7 +600,7 @@ class TestNetEvaluator(object):
             except:
                 self.thread = None
         net_weight_transfer(self.test_net, self.train_net)
-        if USE_ONE_THREAD:
+        if config.use_one_thread:
             self.run_test(iteration)
         else:
             self.thread = threading.Thread(target=self.run_test, args=[iteration])
@@ -614,7 +614,7 @@ def init_solver(solver_config, options):
     if options.test_net is None:
         return solver_inst, None
     else:
-        return solver_inst, init_testnet(options.test_net, test_device=options.test_device)
+        return solver_inst, init_testnet(options.test_net, test_device=options.test_device, test_stage=options.test_stage)
 
 
 def init_testnet(test_net, trained_model=None, test_device=0):

@@ -3,7 +3,6 @@ layer {
   name: "data"
   type: "MemoryData"
   top: "data"
-  top: "datai"
   memory_data_param {
     dim: 1
     dim: 1
@@ -15,7 +14,6 @@ layer {
   name: "aff_label"
   type: "MemoryData"
   top: "aff_label"
-  top: "aff_labeli"
   include {
     phase: TRAIN
   }
@@ -30,7 +28,6 @@ layer {
   name: "comp_label"
   type: "MemoryData"
   top: "comp_label"
-  top: "comp_labeli"
   include {
     phase: TRAIN
     stage: "euclid"
@@ -46,7 +43,6 @@ layer {
   name: "smax_label"
   type: "MemoryData"
   top: "smax_label"
-  top: "smax_labeli"
   include {
     phase: TRAIN
   }
@@ -61,7 +57,6 @@ layer {
   name: "scale"
   type: "MemoryData"
   top: "scale"
-  top: "scalei"
   include {
     phase: TRAIN
     stage: "euclid"
@@ -77,7 +72,6 @@ layer {
   name: "nhood"
   type: "MemoryData"
   top: "nhood"
-  top: "nhoodi"
   include {
     phase: TRAIN
     stage: "malis"
@@ -87,39 +81,6 @@ layer {
     dim: 1
     dim: 2
     dim: 3
-  }
-}
-layer {
-  name: "silence"
-  type: "Silence"
-  bottom: "datai"
-  bottom: "aff_labeli"
-  bottom: "comp_labeli"
-  bottom: "smax_labeli"
-  bottom: "nhoodi"
-  include {
-    phase: TRAIN
-    stage: "malis"
-  }
-}
-layer {
-  name: "silence"
-  type: "Silence"
-  bottom: "datai"
-  bottom: "aff_labeli"
-  bottom: "smax_labeli"
-  bottom: "scalei"
-  include {
-    phase: TRAIN
-    stage: "euclid"
-  }
-}
-layer {
-  name: "silence"
-  type: "Silence"
-  bottom: "datai"
-  include {
-    phase: TEST
   }
 }
 layer {
@@ -666,7 +627,7 @@ layer {
     lr_mult: 2
   }
   convolution_param {
-    num_output: 8
+    num_output: 9
     kernel_size: 1
     kernel_size: 1
     weight_filler {

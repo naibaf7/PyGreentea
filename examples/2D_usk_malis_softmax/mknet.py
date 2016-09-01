@@ -1,6 +1,5 @@
 from __future__ import print_function
 import sys, os, math
-import h5py
 import numpy as np
 from numpy import float32, int32, uint8, dtype
 
@@ -20,31 +19,23 @@ from pygreentea.pygreentea import metalayers as ML
 net = caffe.NetSpec()
 
 # Data input layer
-net.data, net.datai = L.MemoryData(dim=[1, 1], ntop=2)
+net.data = L.MemoryData(dim=[1, 1], ntop=1)
 # Label input layer
-net.aff_label, net.aff_labeli = L.MemoryData(dim=[1, 2], ntop=2, include=[dict(phase=0)])
+net.aff_label = L.MemoryData(dim=[1, 2], ntop=1, include=[dict(phase=0)])
 # Components label layer 
-net.comp_label, net.comp_labeli = L.MemoryData(dim=[1, 2], ntop=2, include=[dict(phase=0, stage='euclid')])
+net.comp_label = L.MemoryData(dim=[1, 2], ntop=1, include=[dict(phase=0, stage='euclid')])
 # Affinity label input layer
-net.smax_label, net.smax_labeli = L.MemoryData(dim=[1, 1], ntop=2, include=[dict(phase=0)])
+net.smax_label = L.MemoryData(dim=[1, 1], ntop=1, include=[dict(phase=0)])
 # Scale input layer
-net.scale, net.scalei = L.MemoryData(dim=[1, 2], ntop=2, include=[dict(phase=0, stage='euclid')])
+net.scale = L.MemoryData(dim=[1, 2], ntop=1, include=[dict(phase=0, stage='euclid')])
 # Silence the not needed data and label integer values
-net.nhood, net.nhoodi = L.MemoryData(dim=[1, 1, 2, 3], ntop=2, include=[dict(phase=0, stage='malis')])
-
-silence_test = L.Silence(net.datai, ntop=0, include=[dict(phase=1)])
-silence_euclid = L.Silence(net.datai, net.aff_labeli, net.smax_labeli, net.scalei, ntop=0, include=[dict(phase=0, stage='euclid')])
-silence_malis = L.Silence(net.datai, net.aff_labeli, net.comp_labeli, net.smax_labeli, net.nhoodi, ntop=0, include=[dict(phase=0, stage='malis')])
-
-# Bundling together the layers, because they have the same function in different phases / stages!
-# This ensures the layers will get the same name and function, with different parameters for each phase / stage.
-net.silence = {silence_test, silence_euclid, silence_malis}
+net.nhood = L.MemoryData(dim=[1, 1, 2, 3], ntop=1, include=[dict(phase=0, stage='malis')])
 
 # USK-Net metalayer
 net.usknet = ML.USKNet(net.data, fmap_start=64, depth=1, fmap_inc_rule = lambda fmaps: int(math.ceil(float(fmaps) * 2)), fmap_dec_rule = lambda fmaps: int(math.ceil(float(fmaps) / 3)), sknetconfs=[None, dict(conv=[[6],[4],[4]], padding=[86], fmap_inc_rule = lambda fmaps: 128, fmap_dec_rule = lambda fmaps: int(math.ceil(float(fmaps) / 2)), fmap_bridge_rule = lambda fmaps: fmaps * 4)])
 
 net.aff_out = L.Convolution(net.usknet, kernel_size=[1, 1], num_output=2, param=[dict(lr_mult=1),dict(lr_mult=2)], weight_filler=dict(type='msra'), bias_filler=dict(type='constant'))
-net.smax_out = L.Convolution(net.usknet, kernel_size=[1, 1], num_output=8, param=[dict(lr_mult=1),dict(lr_mult=2)], weight_filler=dict(type='msra'), bias_filler=dict(type='constant'))
+net.smax_out = L.Convolution(net.usknet, kernel_size=[1, 1], num_output=9, param=[dict(lr_mult=1),dict(lr_mult=2)], weight_filler=dict(type='msra'), bias_filler=dict(type='constant'))
 
 # Choose output activation functions
 net.aff_pred = L.Sigmoid(net.aff_out, ntop=1, in_place=False)
