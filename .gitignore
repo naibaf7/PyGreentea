@@ -60,3 +60,7 @@ target/
 .project
 .pydevproject
 .idea
+*.caffemodel
+*.solverstate
+*.hdf5
+*.h5

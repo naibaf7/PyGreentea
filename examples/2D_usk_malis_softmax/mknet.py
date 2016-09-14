@@ -23,7 +23,7 @@ net.data = L.MemoryData(dim=[1, 1], ntop=1)
 # Label input layer
 net.aff_label = L.MemoryData(dim=[1, 2], ntop=1, include=[dict(phase=0)])
 # Components label layer 
-net.comp_label = L.MemoryData(dim=[1, 2], ntop=1, include=[dict(phase=0, stage='euclid')])
+net.comp_label = L.MemoryData(dim=[1, 2], ntop=1, include=[dict(phase=0, stage='malis')])
 # Affinity label input layer
 net.smax_label = L.MemoryData(dim=[1, 1], ntop=1, include=[dict(phase=0)])
 # Scale input layer
@@ -58,7 +58,7 @@ net.smax_loss = L.SoftmaxWithLoss(net.smax_out, net.smax_label, ntop=0, include=
 # - A list of spatial dependencies; here [-1, 0] means the Y axis is a free parameter, and the X axis should be identical to the Y axis.
 pygt.fix_input_dims(net,
                     [net.data, net.aff_label, net.comp_label, net.smax_label, net.scale],
-                    max_shapes = [[692,692],[700,700],[700,700],[700,700],[700,700]],
+                    max_shapes = [[500,500],[500,500],[500,500],[500,500],[500,500]],
                     shape_coupled = [-1, 0])
 
 

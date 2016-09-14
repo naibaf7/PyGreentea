@@ -6,8 +6,8 @@ layer {
   memory_data_param {
     dim: 1
     dim: 1
-    dim: 692
-    dim: 692
+    dim: 500
+    dim: 500
   }
 }
 layer {
@@ -20,8 +20,8 @@ layer {
   memory_data_param {
     dim: 1
     dim: 2
-    dim: 512
-    dim: 512
+    dim: 320
+    dim: 320
   }
 }
 layer {
@@ -30,13 +30,13 @@ layer {
   top: "comp_label"
   include {
     phase: TRAIN
-    stage: "euclid"
+    stage: "malis"
   }
   memory_data_param {
     dim: 1
     dim: 2
-    dim: 512
-    dim: 512
+    dim: 320
+    dim: 320
   }
 }
 layer {
@@ -49,8 +49,8 @@ layer {
   memory_data_param {
     dim: 1
     dim: 1
-    dim: 512
-    dim: 512
+    dim: 320
+    dim: 320
   }
 }
 layer {
@@ -64,8 +64,8 @@ layer {
   memory_data_param {
     dim: 1
     dim: 2
-    dim: 512
-    dim: 512
+    dim: 320
+    dim: 320
   }
 }
 layer {

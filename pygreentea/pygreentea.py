@@ -2,15 +2,15 @@ from __future__ import print_function
 
 import gc
 import inspect
-import math
+import math, copy
 import os
 import sys
 import threading
 import multiprocessing
 import concurrent.futures
 import time
+import random
 import pygreentea
-from setup import pygtpath
 
 # Determine where PyGreentea is
 pygtpath = os.path.normpath(os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])))
@@ -58,37 +58,33 @@ else:
     sys.path.append(pygtpath+'/'+config.malis_path)
 import malis as malis
 
+def minidx(data, index):
+    return data[min(len(data) - 1, index)]
 
 # Wrapper around a networks set_input_arrays to prevent memory leaks of locked up arrays
 class NetInputWrapper:
     
-    def __init__(self, net, shapes):
+    def __init__(self, net, input_specs={}, output_specs={}):
         self.net = net
-        self.shapes = shapes
-        self.dummy_slice = np.ascontiguousarray([0]).astype(float32)
-        self.inputs = []
-        self.input_keys = ['data', 'label', 'scale', 'components', 'nhood']
-        self.input_layers = []
+        self.input_specs = input_specs
+        self.output_specs = output_specs
+        self.inputs = {}
         
-        for i in range(0, len(self.input_keys)):
-            if (self.input_keys[i] in self.net.layers_dict):
-                self.input_layers += [self.net.layers_dict[self.input_keys[i]]]
-        
-        if config.debug:
-            print("Input layers: ", len(self.input_layers))
-        
-        for i in range(0,len(shapes)):
+        for set_key in self.input_specs.keys():
+            shape = self.input_specs[set_key].shape
             # Pre-allocate arrays that will persist with the network
-            self.inputs += [np.zeros(tuple(self.shapes[i]), dtype=float32)]
-                
-        if config.debug:
-            print("Shapes: ", len(shapes))
+            self.inputs[set_key] = np.zeros(tuple(shape), dtype=float32)
         
-    def setInputs(self, data):      
-        for i in range(0,len(self.shapes)):
-            np.copyto(self.inputs[i], np.ascontiguousarray(data[i]).astype(float32))
-            self.net.set_layer_input_arrays(self.input_layers[i], self.inputs[i], self.dummy_slice)
-                  
+    def set_inputs(self, data):      
+        for set_key in self.input_specs.keys():
+            np.copyto(self.inputs[set_key], np.ascontiguousarray(data[set_key]).astype(float32))
+            self.net.set_layer_input_arrays(self.input_specs[set_key].memory_layer, self.inputs[set_key], None)
+    
+    def get_outputs(self):
+        outputs = {}
+        for set_key in self.output_specs.keys():
+            outputs[set_key] = self.output_specs[set_key].blob.data
+        return outputs
 
 # Transfer network weights from one network to another
 def net_weight_transfer(dst_net, src_net):
@@ -110,30 +106,7 @@ def normalize(dataset, newmin=-1, newmax=1):
         minval = minval.min(0)
     return ((dataset - minval) / (maxval - minval)) * (newmax - newmin) + newmin
 
-def get_zero_padded_slice_from_array_by_offset(array, origin, shape):
-    result = np.zeros(shape=shape, dtype=array.dtype)
-    source_slices = tuple([
-        slice(max(0, offset), min(slice_width+offset, source_width), 1)
-        for offset, slice_width, source_width
-        in zip(origin, shape, array.shape)
-    ])
-    target_slices = tuple([
-        slice(max(-offset, 0), min(slice_width, source_width-offset), 1)
-        for offset, slice_width, source_width
-        in zip(origin, shape, array.shape)
-    ])
-    source_data = array[source_slices]
-    result[target_slices] = source_data
-    return result
-
-
-def get_zero_padded_array_slice(array, slices):
-    origin = [slice.start for slice in slices]
-    shape = [slice.stop - slice.start for slice in slices]
-    return get_zero_padded_slice_from_array_by_offset(array, origin, shape)
-
-
-def getSolverStates(prefix):
+def get_solver_states(prefix):
     files = [f for f in os.listdir('.') if os.path.isfile(f)]
     print(files)
     solverstates = []
@@ -142,7 +115,7 @@ def getSolverStates(prefix):
             solverstates += [(int(file[len(prefix+'_iter_'):-len('.solverstate')]),file)]
     return sorted(solverstates)
             
-def getCaffeModels(prefix):
+def get_caffe_models(prefix):
     files = [f for f in os.listdir('.') if os.path.isfile(f)]
     print(files)
     caffemodels = []
@@ -151,132 +124,30 @@ def getCaffeModels(prefix):
             caffemodels += [(int(file[len(prefix+'_iter_'):-len('.caffemodel')]),file)]
     return sorted(caffemodels)
 
-
 def scale_errors(data, factor_low, factor_high):
     scaled_data = np.add((data >= 0.5) * factor_high, (data < 0.5) * factor_low)
     return scaled_data
-
 
 def count_affinity(dataset):
     aff_high = np.sum(dataset >= 0.5)
     aff_low = np.sum(dataset < 0.5)
     return aff_high, aff_low
 
-
 def border_reflect(dataset, border):
     return np.pad(dataset,((border, border)),'reflect')
 
-
-def augment_data_simple(dataset):
-    nset = len(dataset)
-    for iset in range(nset):
-        for reflectz in range(2):
-            for reflecty in range(2):
-                for reflectx in range(2):
-                    for swapxy in range(2):
-
-                        if reflectz==0 and reflecty==0 and reflectx==0 and swapxy==0:
-                            continue
-
-                        dataset.append({})
-                        dataset[-1]['name'] = dataset[iset]['name']+'_x'+str(reflectx)+'_y'+str(reflecty)+'_z'+str(reflectz)+'_xy'+str(swapxy)
-
-
-
-                        dataset[-1]['nhood'] = dataset[iset]['nhood']
-                        dataset[-1]['data'] = dataset[iset]['data'][:]
-                        dataset[-1]['components'] = dataset[iset]['components'][:]
-
-                        if reflectz:
-                            dataset[-1]['data']         = dataset[-1]['data'][::-1,:,:]
-                            dataset[-1]['components']   = dataset[-1]['components'][::-1,:,:]
-
-                        if reflecty:
-                            dataset[-1]['data']         = dataset[-1]['data'][:,::-1,:]
-                            dataset[-1]['components']   = dataset[-1]['components'][:,::-1,:]
-
-                        if reflectx:
-                            dataset[-1]['data']         = dataset[-1]['data'][:,:,::-1]
-                            dataset[-1]['components']   = dataset[-1]['components'][:,:,::-1]
-
-                        if swapxy:
-                            dataset[-1]['data']         = dataset[-1]['data'].transpose((0,2,1))
-                            dataset[-1]['components']   = dataset[-1]['components'].transpose((0,2,1))
-
-                        dataset[-1]['label'] = malis.seg_to_affgraph(dataset[-1]['components'],dataset[-1]['nhood'])
-
-                        dataset[-1]['reflectz']=reflectz
-                        dataset[-1]['reflecty']=reflecty
-                        dataset[-1]['reflectx']=reflectx
-                        dataset[-1]['swapxy']=swapxy
-    return dataset
-
-    
-def augment_data_elastic(dataset,ncopy_per_dset):
-    dsetout = []
-    nset = len(dataset)
-    for iset in range(nset):
-        for icopy in range(ncopy_per_dset):
-            reflectz = np.random.rand()>.5
-            reflecty = np.random.rand()>.5
-            reflectx = np.random.rand()>.5
-            swapxy = np.random.rand()>.5
-
-            dataset.append({})
-            dataset[-1]['reflectz']=reflectz
-            dataset[-1]['reflecty']=reflecty
-            dataset[-1]['reflectx']=reflectx
-            dataset[-1]['swapxy']=swapxy
-
-            dataset[-1]['name'] = dataset[iset]['name']
-            dataset[-1]['nhood'] = dataset[iset]['nhood']
-            dataset[-1]['data'] = dataset[iset]['data'][:]
-            dataset[-1]['components'] = dataset[iset]['components'][:]
-
-            if reflectz:
-                dataset[-1]['data']         = dataset[-1]['data'][::-1,:,:]
-                dataset[-1]['components']   = dataset[-1]['components'][::-1,:,:]
-
-            if reflecty:
-                dataset[-1]['data']         = dataset[-1]['data'][:,::-1,:]
-                dataset[-1]['components']   = dataset[-1]['components'][:,::-1,:]
-
-            if reflectx:
-                dataset[-1]['data']         = dataset[-1]['data'][:,:,::-1]
-                dataset[-1]['components']   = dataset[-1]['components'][:,:,::-1]
-
-            if swapxy:
-                dataset[-1]['data']         = dataset[-1]['data'].transpose((0,2,1))
-                dataset[-1]['components']   = dataset[-1]['components'].transpose((0,2,1))
-
-            # elastic deformations
-
-            dataset[-1]['label'] = malis.seg_to_affgraph(dataset[-1]['components'],dataset[-1]['nhood'])
-
-    return dataset
-
-    
 def slice_data(data, offsets, sizes):
-    if (len(offsets) == 1):
-        return data[offsets[0]:offsets[0] + sizes[0]]
-    if (len(offsets) == 2):
-        return data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1]]
-    if (len(offsets) == 3):
-        return data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1], offsets[2]:offsets[2] + sizes[2]]
-    if (len(offsets) == 4):
-        return data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1], offsets[2]:offsets[2] + sizes[2], offsets[3]:offsets[3] + sizes[3]]
-
+    """
+    data should be of shape [#feature maps (channels), spatial Z, spatial Y, spatial X]
+    offsets and sizes should be of shape [spatial Z, spatial Y, spatial X]
+    The number of spatial dimensions can vary
+    """
+    slicing = [slice(0, data.shape[0])] + [slice(offsets[i], offsets[i]+sizes[i]) for i in range(0, min(len(offsets),len(data.shape)-1))]
+    return data[slicing]
 
 def set_slice_data(data, insert_data, offsets, sizes):
-    if (len(offsets) == 1):
-        data[offsets[0]:offsets[0] + sizes[0]] = insert_data
-    if (len(offsets) == 2):
-        data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1]] = insert_data
-    if (len(offsets) == 3):
-        data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1], offsets[2]:offsets[2] + sizes[2]] = insert_data
-    if (len(offsets) == 4):
-        data[offsets[0]:offsets[0] + sizes[0], offsets[1]:offsets[1] + sizes[1], offsets[2]:offsets[2] + sizes[2], offsets[3]:offsets[3] + sizes[3]] = insert_data
-
+    slicing = [slice(0, data.shape[0])] + [slice(offsets[i], offsets[i]+sizes[i]) for i in range(0, min(len(offsets),len(data.shape)-1))]
+    data[slicing] = insert_data
 
 def sanity_check_net_blobs(net):
     for key in net.blobs.keys():
@@ -334,229 +205,6 @@ def dump_tikzgraph_maps(net, folder):
             # print(np.uint8(norm[f,:]).shape)
             writer.write(outfile, np.uint8(mapout))
             outfile.close()
-                
-        
-def get_net_input_specs(net, test_blobs = ['data', 'label', 'scale', 'label_affinity', 'affinty_edges']):
-    
-    shapes = []
-    
-    # The order of the inputs is strict in our network types
-    for blob in test_blobs:
-        if (blob in net.blobs):
-            shapes += [[blob, np.shape(net.blobs[blob].data)]]
-        
-    return shapes
-
-def get_spatial_io_dims(net):
-    out_primary = 'label'
-    
-    if ('prob' in net.blobs):
-        out_primary = 'prob'
-    
-    shapes = get_net_input_specs(net, test_blobs=['data', out_primary])
-        
-    dims = len(shapes[0][1]) - 2
-    print(dims)
-    
-    input_dims = list(shapes[0][1])[2:2+dims]
-    output_dims = list(shapes[1][1])[2:2+dims]
-    padding = [input_dims[i]-output_dims[i] for i in range(0,dims)]
-    
-    return input_dims, output_dims, padding
-
-def get_fmap_io_dims(net):
-    out_primary = 'label'
-    
-    if ('prob' in net.blobs):
-        out_primary = 'prob'
-    
-    shapes = get_net_input_specs(net, test_blobs=['data', out_primary])
-    
-    input_fmaps = list(shapes[0][1])[1]
-    output_fmaps = list(shapes[1][1])[1]
-    
-    return input_fmaps, output_fmaps
-
-
-def get_net_output_specs(net):
-    return np.shape(net.blobs['prob'].data)
-
-
-def process_input_data(net_io, input_data):
-    net_io.setInputs([input_data])
-    net_io.net.forward()
-    net_outputs = net_io.net.blobs['prob']
-    output = net_outputs.data[0].copy()
-    return output
-
-
-def generate_dataset_offsets_for_processing(net, data_arrays, process_borders):
-    input_dims, output_dims, input_padding = get_spatial_io_dims(net)
-    dims = len(output_dims)
-    dataset_offsets_to_process = dict()
-    for i in range(len(data_arrays)):
-        data_array = data_arrays[i]['data']
-        data_dims = len(data_array.shape)
-        if process_borders:
-            border_widths = [int(math.ceil(pad / float(2))) for pad in input_padding]
-            origin = [-border_width for border_width in border_widths]
-        else:
-            origin = [0 for _ in input_padding]
-        offsets = list(origin)
-        in_dims = []
-        out_dims = []
-        for d in range(dims):
-            in_dims += [data_array.shape[data_dims-dims+d]]
-            out_dims += [data_array.shape[data_dims-dims+d] - input_padding[d]]
-        list_of_offsets_to_process = []
-        while True:
-            offsets_to_append = list(offsets)  # make a copy. important!
-            list_of_offsets_to_process.append(offsets_to_append)
-            incremented = False
-            for d in range(dims):
-                if process_borders:
-                    maximum_offset = in_dims[dims - 1 - d] - output_dims[dims - 1 - d] - border_widths[dims - 1 - d]
-                else:
-                    maximum_offset = out_dims[dims - 1 - d] - output_dims[dims - 1 - d]
-                if offsets[dims - 1 - d] == maximum_offset:
-                    # Reset direction
-                    offsets[dims - 1 - d] = origin[dims - 1 - d]
-                else:
-                    # Increment direction
-                    next_potential_offset = offsets[dims - 1 - d] + output_dims[dims - 1 - d]
-                    offsets[dims - 1 - d] = min(next_potential_offset, maximum_offset)
-                    incremented = True
-                    break
-            if not incremented:
-                break
-        dataset_offsets_to_process[i] = list_of_offsets_to_process
-    return dataset_offsets_to_process
-
-
-def process_core_multithreaded(device_locks, net_io, data_slice, offsets, pred_array, input_padding, fmaps_out,
-                 output_dims, offsets_to_enqueue,
-                 index_of_shared_dataset, source_dataset_index):
-    # Each thread sets its GPU
-    current_device_id = -1
-    while (current_device_id == -1):
-        for device_list_id in range(0,len(device_locks)):
-            if (device_locks[device_list_id].acquire(False)):
-                current_device_id = device_list_id
-                break
-        if current_device_id == -1:
-            time.sleep(0.0005)
-    if DEBUG:
-        print("Using device (list ID): ", current_device_id)
-    # Note that this is the list ID, not the absolute device ID
-    caffe.select_device(current_device_id, True)
-    process_core(net_io[current_device_id], data_slice, offsets, pred_array, input_padding, fmaps_out,
-                 output_dims, offsets_to_enqueue,
-                 index_of_shared_dataset, source_dataset_index)
-    device_locks[device_list_id].release()
-    
-def process_core(net_io, data_slice, offsets, pred_array, input_padding, fmaps_out,
-                 output_dims, offsets_to_enqueue,
-                 index_of_shared_dataset, source_dataset_index):
-    process_local_net_io = None
-    if isinstance(net_io, list):
-        process_local_net_io = net_io[multiprocessing.Process.name]
-    else:
-        process_local_net_io = net_io
-        
-    output = process_input_data(process_local_net_io, data_slice)
-    print(offsets)
-    print(output.mean())
-    pads = [int(math.ceil(pad / float(2))) for pad in input_padding]
-    offsets_for_pred_array = [0] + [offset + pad for offset, pad in zip(offsets, pads)]
-    set_slice_data(pred_array, output, offsets_for_pred_array, [fmaps_out] + output_dims)
-
-def process(nets, data_arrays, shapes=None, net_io=None, zero_pad_source_data=True, target_arrays=None):
-    net = None
-    thread_pool = None
-    device_locks = None
-    if isinstance(nets, list):
-        # Grab one network to figure out parameters
-        net = nets[0]
-    else:
-        net = nets
-    input_dims, output_dims, input_padding = get_spatial_io_dims(net)
-    fmaps_in, fmaps_out = get_fmap_io_dims(net)
-    dims = len(output_dims)
-    if target_arrays is not None:
-        assert len(data_arrays) == len(target_arrays)
-        for data_array, target in zip(data_arrays, target_arrays):
-            prediction_shape = (fmaps_out,) + data_array['data'].shape[-dims:]
-            assert prediction_shape == target.shape, \
-                "Target array for dname {} is the wrong shape. {} should be {}"\
-                    .format(data_array['name'], target.shape, prediction_shape)
-    pred_arrays = []
-    if shapes is None:
-        # Raw data slice input         (n = 1, f = 1, spatial dims)
-        shapes = [[1, fmaps_in] + input_dims]
-    if net_io is None:
-        if isinstance(nets, list):
-            net_io = []
-            for net_inst in nets:
-                net_io += [NetInputWrapper(net_inst, shapes)]
-        else:   
-            net_io = NetInputWrapper(net, shapes)
-            
-    dataset_offsets_to_process = generate_dataset_offsets_for_processing(
-        net, data_arrays, process_borders=zero_pad_source_data)
-    for source_dataset_index in dataset_offsets_to_process:
-        
-        # Launch 
-        if isinstance(nets, list):
-            thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(nets))
-            device_locks = []
-            for device_list_id in range(0,len(nets)):
-                device_locks += [threading.Lock()]
-        
-        list_of_offsets_to_process = dataset_offsets_to_process[source_dataset_index]
-        if DEBUG:
-            print("source_dataset_index = ", source_dataset_index)
-            print("Processing source volume #{i} with offsets list {o}"
-                  .format(i=source_dataset_index, o=list_of_offsets_to_process))
-        # make a copy of that list for enqueueing purposes
-        offsets_to_enqueue = list(list_of_offsets_to_process)
-        data_array = data_arrays[source_dataset_index]['data']
-        if target_arrays is not None:
-            pred_array = target_arrays[source_dataset_index]
-        else:
-            prediction_shape = (fmaps_out,) + data_array.shape[-dims:]
-            pred_array = np.zeros(shape=prediction_shape, dtype=np.float32)
-        # process each offset
-        for i_offsets in range(len(list_of_offsets_to_process)):
-            index_of_shared_dataset = None
-            offsets = list_of_offsets_to_process[i_offsets]
-            if zero_pad_source_data:
-                data_slice = get_zero_padded_slice_from_array_by_offset(
-                    array=data_array,
-                    origin=[0] + offsets,
-                    shape=[fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
-                )
-            else:
-                data_slice = slice_data(
-                    data_array,
-                    [0] + offsets,
-                    [fmaps_in] + [output_dims[di] + input_padding[di] for di in range(dims)]
-                )
-            # process the chunk
-            if isinstance(net_io, list):
-                thread_pool.submit(process_core_multithreaded, device_locks, net_io, data_slice, offsets, pred_array, input_padding, fmaps_out,
-                                    output_dims, offsets_to_enqueue,
-                                    index_of_shared_dataset, source_dataset_index)
-            else:
-                process_core(net_io, data_slice, offsets, pred_array, input_padding, fmaps_out,
-                 output_dims, offsets_to_enqueue,
-                 index_of_shared_dataset, source_dataset_index)
-
-        if not (thread_pool is None):
-            thread_pool.shutdown(True)
-        
-        pred_arrays.append(pred_array)
-    return pred_arrays
-
 
 class TestNetEvaluator(object):
     def __init__(self, test_net, train_net, data_arrays, options):
@@ -614,10 +262,10 @@ def init_solver(solver_config, options):
     if options.test_net is None:
         return solver_inst, None
     else:
-        return solver_inst, init_testnet(options.test_net, test_device=options.test_device, test_stage=options.test_stage)
+        return solver_inst, init_testnet(options.test_net, test_device=options.test_device, level=options.test_level, stages=options.test_stages)
 
 
-def init_testnet(test_net, trained_model=None, test_device=0):
+def init_testnet(test_net, trained_model=None, test_device=0, level=0, stages=None):
     caffe.set_mode_gpu()
     if isinstance(test_device, list):
         # Initialize test network for each device
@@ -625,84 +273,185 @@ def init_testnet(test_net, trained_model=None, test_device=0):
         for device in test_device:
             caffe.select_device(device, False)
             if trained_model is None:
-                networks += [caffe.Net(test_net, caffe.TEST)]
+                networks += [caffe.Net(test_net, caffe.TEST, level=level, stages=stages)]
             else:
-                networks += [caffe.Net(test_net, trained_model, caffe.TEST)]
+                networks += [caffe.Net(test_net, trained_model, caffe.TEST, level=level, stages=stages)]
         return networks
     else:
         # Initialize test network for a single device
         caffe.select_device(test_device, False)
         if trained_model is None:
-            return caffe.Net(test_net, caffe.TEST)
+            return caffe.Net(test_net, caffe.TEST, level=level, stages=stages)
         else:
-            return caffe.Net(test_net, trained_model, caffe.TEST)
-
-
-class MakeDatasetOffset(object):
-    def __init__(self, input_dims, output_dims):
-        self.input_dims = input_dims
-        input_padding = [in_ - out_ for in_, out_ in zip(input_dims, output_dims)]
-        self.border = [int(math.ceil(pad / float(2))) for pad in input_padding]
-        self.dims = len(input_dims)
-        self.random_state = np.random.RandomState()
+            return caffe.Net(test_net, trained_model, caffe.TEST, level=level, stages=stages)
         
-    def calculate_offset_bounds(self, dataset):
-        shape_of_source_data = dataset['data'].shape[-self.dims:]
-        offset_bounds = [(0, n - i) for n, i in zip(shape_of_source_data, self.input_dims)]
-        client_requested_zero_padding = dataset.get('zero_pad_inputs', False)
-        net_requires_zero_padding = any([max_ < min_ for min_, max_ in offset_bounds])
-        if net_requires_zero_padding or client_requested_zero_padding:
-            # then expand bounds to include borders
-            offset_bounds = [(min_ - border, max_ + border) for (min_, max_), border in zip(offset_bounds, self.border)]
-            if DEBUG and net_requires_zero_padding and not client_requested_zero_padding:
-                print("Zero padding even though the client didn't ask, "
-                      "because net input size exceeds source data shape")
-        return offset_bounds
+class InputSpec(object):
+    def __init__(self, name, memory_layer, blob, shape, data_offset=[], scale=[1]):
+        self.name = name
+        self.memory_layer = memory_layer
+        self.blob = blob
+        self.shape = shape
+        self.spatial_offsets = data_offset
+        self.scale = scale
+    def compute_spatial_offsets(self, max_shape, reset=False):
+        if (reset):
+            self.spatial_offsets = [] 
+        self.spatial_offsets = []
+        for i in range(2 + len(self.spatial_offsets), len(self.shape)):
+            self.spatial_offsets.append((minidx(self.scale, i - 2) * max_shape[i] - self.shape[i]))
+    def slice_data(self, batch_size, dataset_indexes, offsets, dataset_combined_sizes, data_arrays):
+        data_slice = np.asarray([slice_data(data_arrays[dataset_indexes[i]][self.name], [((minidx(self.scale, j) * offsets[i][j] + self.spatial_offsets[j]/2) if (data_arrays[dataset_indexes[i]][self.name].shape[j] == minidx(self.scale, j) * dataset_combined_sizes[i][j]) else (minidx(self.scale, j) * offsets[i][j])) for j in range(0, min(len(offsets[i]),len(self.spatial_offsets)))], self.shape[2:]) for i in range(0, batch_size)])
+        # print(data_slice.shape)
+        return data_slice
+    def scaled_shape(self):
+        return [self.shape[0], self.shape[1]] + [self.shape[i + 2] / minidx(self.scale, i) for i in range(0, len(self.shape) - 2)]
+    
+class OutputSpec(object):
+    def __init__(self, name, blob, shape, data_offset=[], scale=[1]):
+        self.name = name
+        self.blob = blob
+        self.shape = shape
+        self.spatial_offsets = data_offset
+        self.scale = scale
+    def compute_spatial_offsets(self, max_shape, reset=False):
+        if (reset):
+            self.spatial_offsets = []
+        for i in range(2 + len(self.spatial_offsets), len(self.shape)):
+            self.spatial_offsets.append((minidx(self.scale, i - 2) * max_shape[i] - self.shape[i]))
+    def set_slice_data(self, dataset_index, offsets, data_arrays, data_slice):
+        set_slice_data(data_arrays[dataset_index][self.name], data_slice, [minidx(self.scale, j) * offsets[j] for j in range(0, len(offsets))], self.shape[2:])
+    def scaled_shape(self):
+        return [self.shape[0], self.shape[1]] + [self.shape[i + 2] / minidx(self.scale, i) for i in range(0, len(self.shape) - 2)]
+        
+def get_net_input_specs(net, data_offsets={}, scales={}):
+    input_specs = {}
+    for layer in net.layers:
+        if (layer.type == 'MemoryData'):
+            for i in range(0, layer.layer_param.top_size):
+                blob_name = layer.layer_param.get_top(i)
+                data_offset = []
+                scale = [1]
+                if (blob_name in data_offsets.keys()):
+                    data_offset = data_offsets[blob_name]
+                if (blob_name in scales.keys()):
+                    scale = scales[blob_name]
+                blob = net.blobs[blob_name]
+                input_spec = InputSpec(blob_name, layer, blob, np.shape(blob.data), data_offset, scale)
+                input_specs[input_spec.name] = input_spec
+    return input_specs
 
-    def __call__(self, data_array_list):
-        which_dataset = self.random_state.randint(0, len(data_array_list))
-        dataset = data_array_list[which_dataset]
-        offset_bounds = self.calculate_offset_bounds(dataset)
-        offsets = [self.random_state.randint(min_, max_ + 1) for min_, max_ in offset_bounds]
-        if DEBUG:
-            print("Training offset generator: dataset #", which_dataset,
-                  "at", offsets, "from bounds", offset_bounds,
-                  "from source shape", dataset['data'].shape, "with input_dims", self.input_dims)
-        return which_dataset, offsets
+def get_net_output_specs(net, blob_names, data_offsets={}, scales={}):
+    output_specs = {}
+    for blob_name in blob_names:
+        data_offset = []
+        scale = [1]
+        if (blob_name in data_offsets.keys()):
+            data_offset = data_offsets[blob_name]
+        if (blob_name in scales.keys()):
+            scale = scales[blob_name]
+        output_spec = OutputSpec(blob_name, net.blobs[blob_name], np.shape(net.blobs[blob_name].data), data_offset, scale)
+        output_specs[output_spec.name] = output_spec
+    return output_specs
+
+class OffsetGenerator:
+    def __init__(self, random, net_input_specs={}, net_output_specs={}):
+        self.random = random
+        self.dataset_index = 0
+        self.offsets = []
+        self.net_input_specs = net_input_specs
+        self.net_output_specs = net_output_specs
+    def make_dataset_offsets(self, batch_size, data_arrays, output_arrays=[], max_shape=[], min_shape=[]):
+        dataset_indexes = []
+        offsets = []
+        dataset_combined_sizes = []
+        if (self.dataset_index < len(data_arrays)):
+            for i in range(0, batch_size):
+                dataset_index = random.randint(0, len(data_arrays) - 1)
+                data_array_keys = data_arrays[dataset_index].keys()
+                dataset_combined_size = []
+                for set_key in data_array_keys:
+                    shape = [data_arrays[dataset_index][set_key].shape[j] / minidx(self.net_input_specs[set_key].scale, j) for j in range(0,len(data_arrays[dataset_index][set_key].shape))]
+                    for j in range(0, len(shape)):
+                        if len(dataset_combined_size) <= j:
+                            dataset_combined_size.append(shape[j])
+                        else:
+                            dataset_combined_size[j] = max(dataset_combined_size[j], shape[j]) 
+                dataset_combined_sizes.append(dataset_combined_size)
+                if (self.random):
+                    offset = [random.randint(0, dataset_combined_size[j - 1] - max_shape[j]) for j in range(2, len(max_shape))]
+                    dataset_indexes.append(dataset_index)
+                    offsets.append(offset)
+                else:
+                    while (len(self.offsets) < len(max(min_shape, max_shape))):
+                        self.offsets.append(0)
+                        
+                    dataset_indexes.append(min(self.dataset_index, len(data_arrays) - 1))
+                    
+                    for set_key in self.net_output_specs.keys():
+                        if (len(output_arrays) <= dataset_indexes[-1]):
+                            output_arrays.append({})
+                        if not (set_key in output_arrays[dataset_indexes[-1]].keys()):
+                            shape = [self.net_output_specs[set_key].shape[1]] + [dataset_combined_sizes[-1][1 + j] - max_shape[2 + j] + self.net_output_specs[set_key].scaled_shape()[2 + j] for j in range(0, len(self.net_output_specs[set_key].shape) - 2)]
+                            output_arrays[dataset_indexes[-1]][set_key] = np.zeros(tuple(shape), dtype=float32)
+                    
+                    offset = copy.deepcopy(self.offsets)
+                    offsets.append(offset)
+                    
+                    increased = False
+                    for j in range(0, len(min_shape) - 2):
+                        q = len(min_shape) - 3 - j
+                        while (len(self.offsets) <= q):
+                            self.offsets.append(0)
+                        if (self.offsets[q] + max_shape[2 + q] < dataset_combined_sizes[-1][1 + q]):
+                            self.offsets[q] = self.offsets[q] + min_shape[2 + q]
+                            if (self.offsets[q] + max_shape[2 + q] >= dataset_combined_sizes[-1][1 + q]):
+                                self.offsets[q] = dataset_combined_sizes[-1][1 + q] - max_shape[2 + q]
+                            increased = True
+                        else:
+                            increased = False
+                            self.offsets[q] = 0
+                            
+                        if increased:
+                            break
+                    if not increased:
+                        self.dataset_index = self.dataset_index + 1
+                        
+        return dataset_indexes, offsets, dataset_combined_sizes
 
 
-def train(solver, test_net, data_arrays, train_data_arrays, options):
+def train(solver, options, train_data_arrays, data_slice_callback,
+          test_net, test_data_arrays, test_data_slice_callback,
+          data_offsets={}, scales={}, test_data_offsets={}, test_scales={}):
     caffe.select_device(options.train_device, False)
 
     net = solver.net
 
     test_eval = None
     if (options.test_net != None):
-        test_eval = TestNetEvaluator(test_net, net, train_data_arrays, options)
+        test_eval = TestNetEvaluator(options, test_net, net, test_data_arrays, test_data_slice_callback)
     
-    input_dims, output_dims, input_padding = get_spatial_io_dims(net)
-    fmaps_in, fmaps_out = get_fmap_io_dims(net)
+    # Get the networks input specifications
+    input_specs = get_net_input_specs(net, data_offsets=data_offsets, scales=scales)
+    max_shape = []
+    if (len(train_data_arrays) > 0):
+        dataset_for_keys = train_data_arrays[0]
+        for set_key in input_specs.keys():
+            if (input_specs[set_key].name in dataset_for_keys.keys()):
+                shape = input_specs[set_key].scaled_shape()
+                for j in range(0, len(shape)):
+                    if len(max_shape) <= j:
+                        max_shape.append(shape[j])
+                    else:
+                        max_shape[j] = max(max_shape[j], shape[j]) 
+            
+        for set_key in input_specs.keys():
+            if (input_specs[set_key].name in train_data_arrays[0].keys()):
+                input_specs[set_key].compute_spatial_offsets(max_shape)
 
-    dims = len(output_dims)
-    losses = []
+    batch_size = max_shape[0]
+    net_io = NetInputWrapper(net, input_specs=input_specs)
     
-    shapes = []
-    # Raw data slice input         (n = 1, f = 1, spatial dims)
-    shapes += [[1,fmaps_in] + input_dims]
-    # Label data slice input    (n = 1, f = #edges, spatial dims)
-    shapes += [[1,fmaps_out] + output_dims]
-    
-    if (options.loss_function == 'malis'):
-        # Connected components input   (n = 1, f = 1, spatial dims)
-        shapes += [[1,1] + output_dims]
-    if (options.loss_function == 'euclid'):
-        # Error scale input   (n = 1, f = #edges, spatial dims)
-        shapes += [[1,fmaps_out] + output_dims]
-    # Nhood specifications         (n = #edges, f = 3)
-    if (('nhood' in data_arrays[0]) and (options.loss_function == 'malis')):
-        shapes += [[1,1] + list(np.shape(data_arrays[0]['nhood']))]
-    net_io = NetInputWrapper(net, shapes)
-    make_dataset_offset = MakeDatasetOffset(input_dims, output_dims)
+    offset_generator = OffsetGenerator(True, net_input_specs=net_io.input_specs)
 
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
@@ -712,55 +461,146 @@ def train(solver, test_net, data_arrays, train_data_arrays, options):
             if config.use_one_thread:
                 # after testing finishes, switch back to the training device
                 caffe.select_device(options.train_device, False)
-        dataset_index, offsets = make_dataset_offset(data_arrays)
-        dataset = data_arrays[dataset_index]
-        # These are the raw data elements
-        data_slice = get_zero_padded_slice_from_array_by_offset(
-            array=dataset['data'],
-            origin=[0] + offsets,
-            shape=[fmaps_in] + input_dims)
-        label_slice = slice_data(dataset['label'], [0] + [offsets[di] + int(math.ceil(input_padding[di] / float(2))) for di in range(0, dims)], [fmaps_out] + output_dims)
-        if 'transform' in dataset:
-            # transform the input
-            # assumes that the original input pixel values are scaled between (0,1)
-            if config.debug:
-                print("data_slice stats, pre-transform: min", data_slice.min(), "mean", data_slice.mean(),
-                      "max", data_slice.max())
-            lo, hi = dataset['transform']['scale']
-            data_slice = 0.5 + (data_slice - 0.5) * np.random.uniform(low=lo, high=hi)
-            lo, hi = dataset['transform']['shift']
-            data_slice = data_slice + np.random.uniform(low=lo, high=hi)
-        mask_slice = None
-        if 'mask' in dataset:
-            mask_slice = dataset['mask']
-        if options.loss_function == 'malis':
-            components_slice, ccSizes = malis.connected_components_affgraph(label_slice.astype(int32), dataset['nhood'])
-            # Also recomputing the corresponding labels (connected components)
-            net_io.setInputs([data_slice, label_slice, components_slice, data_arrays[0]['nhood']])
-        elif options.loss_function == 'euclid':
-            label_slice_mean = label_slice.mean()
-            if 'mask' in dataset:
-                label_slice = label_slice * mask_slice
-                label_slice_mean = label_slice.mean() / mask_slice.mean()
-            w_pos = 1.0
-            w_neg = 1.0
-            if options.scale_error:
-                frac_pos = np.clip(label_slice_mean, 0.05, 0.95)
-                w_pos = w_pos / (2.0 * frac_pos)
-                w_neg = w_neg / (2.0 * (1.0 - frac_pos))
-            error_scale_slice = scale_errors(label_slice, w_neg, w_pos)
-            net_io.setInputs([data_slice, label_slice, error_scale_slice])
-        elif options.loss_function == 'softmax':
-            # These are the affinity edge values
-            net_io.setInputs([data_slice, label_slice])
+                
+        
+        dataset_indexes, offsets, dataset_combined_sizes = offset_generator.make_dataset_offsets(batch_size, train_data_arrays, max_shape=max_shape)
+        
+        slices = {}
+        
+        if (len(train_data_arrays) > 0):
+            dataset_for_keys = train_data_arrays[0]           
+            for set_key in dataset_for_keys.keys():
+                data_slice = input_specs[set_key].slice_data(batch_size, dataset_indexes, offsets, dataset_combined_sizes, train_data_arrays)
+                slices[set_key] = data_slice
+
+        data_slice_callback(input_specs, batch_size, dataset_indexes, offsets, dataset_combined_sizes, train_data_arrays, slices)
+        
+
+        net_io.set_inputs(slices)
+        
         loss = solver.step(1)  # Single step
         while gc.collect():
             pass
         time_of_iteration = time.time() - start
-        if options.loss_function == 'euclid' or options.loss_function == 'euclid_aniso':
-            print("[Iter %i] Time: %05.2fs Loss: %f, frac_pos=%f, w_pos=%f" % (i, time_of_iteration, loss, frac_pos, w_pos))
+        
+        
+def process_input_data(net_io, slices):
+    net_io.set_inputs(slices)
+    net_io.net.forward()
+        
+def process_core_multithreaded(device_locks, net_io, data_slices, dataset_indexes, offsets, output_arrays):
+    # Each thread sets its GPU
+    current_device_id = -1
+    while (current_device_id == -1):
+        for device_list_id in range(0,len(device_locks)):
+            if (device_locks[device_list_id].acquire(False)):
+                current_device_id = device_list_id
+                break
+        if current_device_id == -1:
+            time.sleep(0.0005)
+    if config.debug:
+        print("Using device (list ID): ", current_device_id)
+    # Note that this is the list ID, not the absolute device ID
+    caffe.select_device(current_device_id, True)
+    process_core(net_io[current_device_id], data_slices, dataset_indexes, offsets, output_arrays)
+    device_locks[device_list_id].release()
+    
+def process_core(net_io, data_slices, dataset_indexes, offsets, output_arrays):
+    process_local_net_io = None
+    if isinstance(net_io, list):
+        process_local_net_io = net_io[multiprocessing.Process.name]
+    else:
+        process_local_net_io = net_io
+        
+    process_input_data(process_local_net_io, data_slices)
+    outputs = process_local_net_io.get_outputs()
+
+    for i in range(0, len(dataset_indexes)):
+        index = dataset_indexes[i]
+        for set_key in outputs.keys():
+            net_io.output_specs[set_key].set_slice_data(index, offsets[i], output_arrays, outputs[set_key][i])
+    
+def process(test_nets, input_arrays, output_blob_names, output_arrays, data_slice_callback, data_offsets={}, scales={}):
+    thread_pool = None
+    device_locks = None
+    nets = []
+    net_ios = []
+    batch_size = 0
+       
+    if isinstance(test_nets, list):
+        nets.extend(test_nets)
+    else:
+        nets.append(test_nets)
+        
+    for net in nets:
+        # Get the networks input specifications
+        input_specs = get_net_input_specs(net, data_offsets, scales)
+        output_specs = get_net_output_specs(net, output_blob_names, data_offsets, scales)
+        # Get the rescaled max and min shapes. The min shape will be the processing stride
+        max_shape = []
+        min_shape = []
+        if (len(input_arrays) > 0):
+            dataset_for_keys = input_arrays[0]
+            for set_key in input_specs.keys():
+                if (input_specs[set_key].name in dataset_for_keys.keys()):
+                    shape = input_specs[set_key].scaled_shape()
+                    for j in range(0, len(shape)):
+                        if len(max_shape) <= j:
+                            max_shape.append(shape[j])
+                        else:
+                            max_shape[j] = max(max_shape[j], shape[j]) 
+                
+            for set_key in input_specs.keys():
+                if (input_specs[set_key].name in input_arrays[0].keys()):
+                    input_specs[set_key].compute_spatial_offsets(max_shape)
+                    
+            for set_key in output_specs.keys():
+                output_specs[set_key].compute_spatial_offsets(max_shape)
+        
+        for set_key in output_specs.keys():
+            shape = output_specs[set_key].scaled_shape()
+            for j in range(0, len(shape)):
+                if len(min_shape) <= j:
+                    min_shape.append(shape[j])
+                else:
+                    min_shape[j] = min(min_shape[j], shape[j]) 
+                    
+        batch_size = max_shape[0]
+        net_io = NetInputWrapper(net, input_specs=input_specs, output_specs=output_specs)
+        net_ios.append(net_io)
+                    
+    # Launch 
+    if len(nets) > 1:
+        thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(nets))
+        device_locks = []
+        for device_list_id in range(0,len(nets)):
+            device_locks += [threading.Lock()]
+    
+    offset_generator = OffsetGenerator(False, net_input_specs=net_io.input_specs, net_output_specs=net_io.output_specs)
+
+    while True:
+        dataset_indexes, offsets, dataset_combined_sizes = offset_generator.make_dataset_offsets(batch_size, input_arrays, output_arrays=output_arrays, max_shape=max_shape, min_shape=min_shape)
+        
+        # No more offsets to process, terminate:
+        if (len(dataset_indexes) == 0):
+            break
+        
+        data_slices = {}
+        
+        if (len(input_arrays) > 0):
+            dataset_for_keys = input_arrays[0]           
+            for set_key in dataset_for_keys.keys():
+                data_slice = input_specs[set_key].slice_data(batch_size, dataset_indexes, offsets, dataset_combined_sizes, input_arrays)
+                data_slices[set_key] = data_slice
+        
+        data_slice_callback(input_specs, batch_size, dataset_indexes, offsets, dataset_combined_sizes, input_arrays, data_slices)
+        
+        if len(nets) > 1:
+            thread_pool.submit(process_core_multithreaded, device_locks, net_io, data_slices, dataset_indexes, offsets, output_arrays)
         else:
-            print("[Iter %i] Time: %05.2fs Loss: %f" % (i, time_of_iteration, loss))
-        losses += [loss]
-        if hasattr(options, 'loss_snapshot') and ((i % options.loss_snapshot) == 0):
-            io.savemat('loss.mat',{'loss':losses})
+            process_core(net_io, data_slices, dataset_indexes, offsets, output_arrays)
+
+
+
+    if not (thread_pool is None):
+        thread_pool.shutdown(True)
