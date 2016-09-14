@@ -42,9 +42,9 @@ net.aff_pred = L.Sigmoid(net.aff_out, ntop=1, in_place=False)
 net.smax_pred = L.Softmax(net.smax_out, ntop=1, in_place=False, include=[dict(phase=1)])
 
 # Choose a loss function and input data, label and scale inputs. Only include it during the training phase (phase = 0)
-net.euclid_loss = L.EuclideanLoss(net.aff_pred, net.aff_label, net.scale, ntop=0, include=[dict(phase=0, stage='euclid')])
-net.malis_loss = L.MalisLoss(net.aff_pred, net.aff_label, net.comp_label, net.nhood, ntop=0, include=[dict(phase=0, stage='malis')])
-net.smax_loss = L.SoftmaxWithLoss(net.smax_out, net.smax_label, ntop=0, include=[dict(phase=0)])
+net.euclid_loss = L.EuclideanLoss(net.aff_pred, net.aff_label, net.scale, ntop=0, loss_weight=10.0, include=[dict(phase=0, stage='euclid')])
+net.malis_loss = L.MalisLoss(net.aff_pred, net.aff_label, net.comp_label, net.nhood, ntop=0, loss_weight=5.0, include=[dict(phase=0, stage='malis')])
+net.smax_loss = L.SoftmaxWithLoss(net.smax_out, net.smax_label, ntop=0, loss_weight=1.0, include=[dict(phase=0)])
 
 # Fix the spatial input dimensions. Note that only spatial dimensions get modified, the minibatch size
 # and the channels/feature maps must be set correctly by the user (since this code can definitely not

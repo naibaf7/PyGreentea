@@ -659,6 +659,7 @@ layer {
   bottom: "aff_pred"
   bottom: "aff_label"
   bottom: "scale"
+  loss_weight: 10.0
   include {
     phase: TRAIN
     stage: "euclid"
@@ -671,6 +672,7 @@ layer {
   bottom: "aff_label"
   bottom: "comp_label"
   bottom: "nhood"
+  loss_weight: 5.0
   include {
     phase: TRAIN
     stage: "malis"
@@ -681,6 +683,7 @@ layer {
   type: "SoftmaxWithLoss"
   bottom: "smax_out"
   bottom: "smax_label"
+  loss_weight: 1.0
   include {
     phase: TRAIN
   }

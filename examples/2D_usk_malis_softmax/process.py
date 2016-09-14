@@ -36,7 +36,7 @@ caffemodels = pygt.get_caffe_models('net')
 
 test_net = pygt.init_testnet(test_net_file, trained_model=caffemodels[-1][1], test_device=test_device)
 
-def process_data_slice_callback(input_specs, batch_size, dataset_indexes, offsets, dataset_combined_sizes, train_data_arrays, slices):
+def process_data_slice_callback(input_specs, batch_size, dataset_indexes, offsets, dataset_combined_sizes, data_arrays, slices):
     # Nothing to process here
     pass
 

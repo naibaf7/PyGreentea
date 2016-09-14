@@ -57,7 +57,7 @@ def data_slice_callback(input_specs, batch_size, dataset_indexes, offsets, datas
     aff_neg[0,1,:,1:] = np.minimum(pixel_seg[:,:,:,1:], pixel_seg[:,:,:,:-1])
     
     slices['aff_label'] = aff_neg
-    print(slices['aff_label'].shape)
+    # print(slices['aff_label'].shape)
     components_slice, ccSizes = malis.connected_components_affgraph(slices['aff_label'].astype(int32), slices['nhood'])
     slices['comp_label'] = components_slice
     frac_pos = np.clip(slices['aff_label'].mean(), 0.05, 0.95)
@@ -115,7 +115,7 @@ if (len(solverstates) == 0 or solverstates[-1][0] < solver_config.max_iter):
     
 # Next 6000 iterations
 solver_config.max_iter = 12000
-# Replaces the 'euchlid' stage with the 'malis' stage
+# Replaces the 'euclid' stage with the 'malis' stage
 solver_config.train_state.set_stage(0, 'malis')
 
 # Second training stage (softmax + malis)
