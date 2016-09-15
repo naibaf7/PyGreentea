@@ -1,0 +1,353 @@
+name: "net"
+layer {
+  name: "data"
+  type: "MemoryData"
+  top: "data"
+  memory_data_param {
+    dim: 1
+    dim: 1
+    dim: 9
+    dim: 250
+    dim: 250
+  }
+}
+layer {
+  name: "label"
+  type: "MemoryData"
+  top: "label"
+  include {
+    phase: TRAIN
+  }
+  memory_data_param {
+    dim: 1
+    dim: 1
+    dim: 1
+    dim: 162
+    dim: 162
+  }
+}
+layer {
+  name: "Convolution1"
+  type: "Convolution"
+  bottom: "data"
+  top: "Convolution1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 64
+    pad: 0
+    kernel_size: 1
+    kernel_size: 8
+    kernel_size: 8
+    group: 1
+    stride: 1
+    weight_filler {
+      type: "msra"
+    }
+    bias_filler {
+      type: "constant"
+    }
+    dilation: 1
+    dilation: 1
+    dilation: 1
+  }
+}
+layer {
+  name: "Dropout1"
+  type: "Dropout"
+  bottom: "Convolution1"
+  top: "Dropout1"
+  dropout_param {
+    dropout_ratio: 0.2
+  }
+}
+layer {
+  name: "ReLU1"
+  type: "ReLU"
+  bottom: "Dropout1"
+  top: "ReLU1"
+  relu_param {
+    negative_slope: 0.005
+  }
+}
+layer {
+  name: "Pooling1"
+  type: "Pooling"
+  bottom: "ReLU1"
+  top: "Pooling1"
+  pooling_param {
+    pool: MAX
+    kernel_size: 1
+    kernel_size: 2
+    kernel_size: 2
+    stride: 1
+    pad: 0
+    dilation: 1
+    dilation: 1
+    dilation: 1
+  }
+}
+layer {
+  name: "Convolution2"
+  type: "Convolution"
+  bottom: "Pooling1"
+  top: "Convolution2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 96
+    pad: 0
+    kernel_size: 2
+    kernel_size: 6
+    kernel_size: 6
+    group: 1
+    stride: 1
+    weight_filler {
+      type: "msra"
+    }
+    bias_filler {
+      type: "constant"
+    }
+    dilation: 1
+    dilation: 2
+    dilation: 2
+  }
+}
+layer {
+  name: "Dropout2"
+  type: "Dropout"
+  bottom: "Convolution2"
+  top: "Dropout2"
+  dropout_param {
+    dropout_ratio: 0.2
+  }
+}
+layer {
+  name: "ReLU2"
+  type: "ReLU"
+  bottom: "Dropout2"
+  top: "ReLU2"
+  relu_param {
+    negative_slope: 0.005
+  }
+}
+layer {
+  name: "Pooling2"
+  type: "Pooling"
+  bottom: "ReLU2"
+  top: "Pooling2"
+  pooling_param {
+    pool: MAX
+    kernel_size: 1
+    kernel_size: 2
+    kernel_size: 2
+    stride: 1
+    pad: 0
+    dilation: 1
+    dilation: 2
+    dilation: 2
+  }
+}
+layer {
+  name: "Convolution3"
+  type: "Convolution"
+  bottom: "Pooling2"
+  top: "Convolution3"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 144
+    pad: 0
+    kernel_size: 2
+    kernel_size: 5
+    kernel_size: 5
+    group: 1
+    stride: 1
+    weight_filler {
+      type: "msra"
+    }
+    bias_filler {
+      type: "constant"
+    }
+    dilation: 1
+    dilation: 4
+    dilation: 4
+  }
+}
+layer {
+  name: "Dropout3"
+  type: "Dropout"
+  bottom: "Convolution3"
+  top: "Dropout3"
+  dropout_param {
+    dropout_ratio: 0.2
+  }
+}
+layer {
+  name: "ReLU3"
+  type: "ReLU"
+  bottom: "Dropout3"
+  top: "ReLU3"
+  relu_param {
+    negative_slope: 0.005
+  }
+}
+layer {
+  name: "Pooling3"
+  type: "Pooling"
+  bottom: "ReLU3"
+  top: "Pooling3"
+  pooling_param {
+    pool: MAX
+    kernel_size: 1
+    kernel_size: 2
+    kernel_size: 2
+    stride: 1
+    pad: 0
+    dilation: 1
+    dilation: 4
+    dilation: 4
+  }
+}
+layer {
+  name: "Convolution4"
+  type: "Convolution"
+  bottom: "Pooling3"
+  top: "Convolution4"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 576
+    pad: 0
+    kernel_size: 7
+    kernel_size: 7
+    kernel_size: 7
+    group: 1
+    stride: 1
+    weight_filler {
+      type: "msra"
+    }
+    bias_filler {
+      type: "constant"
+    }
+    dilation: 1
+    dilation: 8
+    dilation: 8
+  }
+}
+layer {
+  name: "Dropout4"
+  type: "Dropout"
+  bottom: "Convolution4"
+  top: "Dropout4"
+  dropout_param {
+    dropout_ratio: 0.2
+  }
+}
+layer {
+  name: "ReLU4"
+  type: "ReLU"
+  bottom: "Dropout4"
+  top: "ReLU4"
+  relu_param {
+    negative_slope: 0.005
+  }
+}
+layer {
+  name: "Convolution5"
+  type: "Convolution"
+  bottom: "ReLU4"
+  top: "Convolution5"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 231
+    pad: 0
+    kernel_size: 1
+    group: 1
+    stride: 1
+    weight_filler {
+      type: "msra"
+    }
+    bias_filler {
+      type: "constant"
+    }
+    dilation: 1
+  }
+}
+layer {
+  name: "Dropout5"
+  type: "Dropout"
+  bottom: "Convolution5"
+  top: "Dropout5"
+  dropout_param {
+    dropout_ratio: 0.2
+  }
+}
+layer {
+  name: "sknet"
+  type: "ReLU"
+  bottom: "Dropout5"
+  top: "sknet"
+  relu_param {
+    negative_slope: 0.005
+  }
+}
+layer {
+  name: "out"
+  type: "Convolution"
+  bottom: "sknet"
+  top: "out"
+  convolution_param {
+    num_output: 9
+    kernel_size: 1
+    kernel_size: 1
+    kernel_size: 1
+    weight_filler {
+      type: "msra"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "prob"
+  type: "Softmax"
+  bottom: "out"
+  top: "prob"
+  include {
+    phase: TEST
+  }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "out"
+  bottom: "label"
+  loss_weight: 1.0
+  include {
+    phase: TRAIN
+  }
+}
+

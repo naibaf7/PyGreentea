@@ -1,0 +1,2153 @@
+%!PS-Adobe-3.0
+%%Creator: graphviz version 2.38.0 (20140413.2041)
+%%Title: net
+%%Pages: (atend)
+%%BoundingBox: (atend)
+%%EndComments
+save
+%%BeginProlog
+/DotDict 200 dict def
+DotDict begin
+
+/setupLatin1 {
+mark
+/EncodingVector 256 array def
+ EncodingVector 0
+
+ISOLatin1Encoding 0 255 getinterval putinterval
+EncodingVector 45 /hyphen put
+
+% Set up ISO Latin 1 character encoding
+/starnetISO {
+        dup dup findfont dup length dict begin
+        { 1 index /FID ne { def }{ pop pop } ifelse
+        } forall
+        /Encoding EncodingVector def
+        currentdict end definefont
+} def
+/Times-Roman starnetISO def
+/Times-Italic starnetISO def
+/Times-Bold starnetISO def
+/Times-BoldItalic starnetISO def
+/Helvetica starnetISO def
+/Helvetica-Oblique starnetISO def
+/Helvetica-Bold starnetISO def
+/Helvetica-BoldOblique starnetISO def
+/Courier starnetISO def
+/Courier-Oblique starnetISO def
+/Courier-Bold starnetISO def
+/Courier-BoldOblique starnetISO def
+cleartomark
+} bind def
+
+%%BeginResource: procset graphviz 0 0
+/coord-font-family /Times-Roman def
+/default-font-family /Times-Roman def
+/coordfont coord-font-family findfont 8 scalefont def
+
+/InvScaleFactor 1.0 def
+/set_scale {
+       dup 1 exch div /InvScaleFactor exch def
+       scale
+} bind def
+
+% styles
+/solid { [] 0 setdash } bind def
+/dashed { [9 InvScaleFactor mul dup ] 0 setdash } bind def
+/dotted { [1 InvScaleFactor mul 6 InvScaleFactor mul] 0 setdash } bind def
+/invis {/fill {newpath} def /stroke {newpath} def /show {pop newpath} def} bind def
+/bold { 2 setlinewidth } bind def
+/filled { } bind def
+/unfilled { } bind def
+/rounded { } bind def
+/diagonals { } bind def
+/tapered { } bind def
+
+% hooks for setting color 
+/nodecolor { sethsbcolor } bind def
+/edgecolor { sethsbcolor } bind def
+/graphcolor { sethsbcolor } bind def
+/nopcolor {pop pop pop} bind def
+
+/beginpage {	% i j npages
+	/npages exch def
+	/j exch def
+	/i exch def
+	/str 10 string def
+	npages 1 gt {
+		gsave
+			coordfont setfont
+			0 0 moveto
+			(\() show i str cvs show (,) show j str cvs show (\)) show
+		grestore
+	} if
+} bind def
+
+/set_font {
+	findfont exch
+	scalefont setfont
+} def
+
+% draw text fitted to its expected width
+/alignedtext {			% width text
+	/text exch def
+	/width exch def
+	gsave
+		width 0 gt {
+			[] 0 setdash
+			text stringwidth pop width exch sub text length div 0 text ashow
+		} if
+	grestore
+} def
+
+/boxprim {				% xcorner ycorner xsize ysize
+		4 2 roll
+		moveto
+		2 copy
+		exch 0 rlineto
+		0 exch rlineto
+		pop neg 0 rlineto
+		closepath
+} bind def
+
+/ellipse_path {
+	/ry exch def
+	/rx exch def
+	/y exch def
+	/x exch def
+	matrix currentmatrix
+	newpath
+	x y translate
+	rx ry scale
+	0 0 1 0 360 arc
+	setmatrix
+} bind def
+
+/endpage { showpage } bind def
+/showpage { } def
+
+/layercolorseq
+	[	% layer color sequence - darkest to lightest
+		[0 0 0]
+		[.2 .8 .8]
+		[.4 .8 .8]
+		[.6 .8 .8]
+		[.8 .8 .8]
+	]
+def
+
+/layerlen layercolorseq length def
+
+/setlayer {/maxlayer exch def /curlayer exch def
+	layercolorseq curlayer 1 sub layerlen mod get
+	aload pop sethsbcolor
+	/nodecolor {nopcolor} def
+	/edgecolor {nopcolor} def
+	/graphcolor {nopcolor} def
+} bind def
+
+/onlayer { curlayer ne {invis} if } def
+
+/onlayers {
+	/myupper exch def
+	/mylower exch def
+	curlayer mylower lt
+	curlayer myupper gt
+	or
+	{invis} if
+} def
+
+/curlayer 0 def
+
+%%EndResource
+%%EndProlog
+%%BeginSetup
+14 default-font-family set_font
+1 setmiterlimit
+% /arrowlength 10 def
+% /arrowwidth 5 def
+
+% make sure pdfmark is harmless for PS-interpreters other than Distiller
+/pdfmark where {pop} {userdict /pdfmark /cleartomark load put} ifelse
+% make '<<' and '>>' safe on PS Level 1 devices
+/languagelevel where {pop languagelevel}{1} ifelse
+2 lt {
+    userdict (<<) cvn ([) cvn load put
+    userdict (>>) cvn ([) cvn load put
+} if
+
+%%EndSetup
+setupLatin1
+%%Page: 1 1
+%%PageBoundingBox: 0 0 95 576
+%%PageOrientation: Portrait
+0 0 1 beginpage
+gsave
+0 0 95 576 boxprim clip newpath
+0.183323 0.183323 set_scale 0 rotate 4 4 translate
+% prob (Softmax)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 207 73.5 moveto
+207 109.5 lineto
+308 109.5 lineto
+308 73.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 207 73.5 moveto
+207 109.5 lineto
+308 109.5 lineto
+308 73.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+215 87.8 moveto 85 (prob \(Softmax\)) alignedtext
+grestore
+% prob
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+257.5 18 27 18 ellipse_path stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+245 14.3 moveto 25 (prob) alignedtext
+grestore
+% prob (Softmax)->prob
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 257.5 73.19 moveto
+257.5 65.11 257.5 55.3 257.5 46.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 261 46.15 moveto
+257.5 36.15 lineto
+254 46.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 261 46.15 moveto
+257.5 36.15 lineto
+254 46.15 lineto
+closepath stroke
+grestore
+% data
+gsave
+0 0 0.87843 nodecolor
+newpath 341.87 3034.54 moveto
+341.87 3049.46 lineto
+325.84 3060 lineto
+303.16 3060 lineto
+287.13 3049.46 lineto
+287.13 3034.54 lineto
+303.16 3024 lineto
+325.84 3024 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 341.87 3034.54 moveto
+341.87 3049.46 lineto
+325.84 3060 lineto
+303.16 3060 lineto
+287.13 3049.46 lineto
+287.13 3034.54 lineto
+303.16 3024 lineto
+325.84 3024 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+303 3038.3 moveto 23 (data) alignedtext
+grestore
+% Convolution1 (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+0 0.68627 1 nodecolor
+newpath 118.5 2950.5 moveto
+118.5 2986.5 lineto
+510.5 2986.5 lineto
+510.5 2950.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 118.5 2950.5 moveto
+118.5 2986.5 lineto
+510.5 2986.5 lineto
+510.5 2950.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+126.5 2964.8 moveto 376 (Convolution1 \(Convolution\) kernel size: 1 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% data->Convolution1 (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 3023.69 moveto
+314.5 3015.61 314.5 3005.8 314.5 2996.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2996.65 moveto
+314.5 2986.65 lineto
+311 2996.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2996.65 moveto
+314.5 2986.65 lineto
+311 2996.65 lineto
+closepath stroke
+grestore
+% label (MemoryData)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 0 234.5 moveto
+0 270.5 lineto
+129 270.5 lineto
+129 234.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 0 234.5 moveto
+0 270.5 lineto
+129 270.5 lineto
+129 234.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+8 248.8 moveto 113 (label \(MemoryData\)) alignedtext
+grestore
+% label
+gsave
+0 0 0.87843 nodecolor
+newpath 120.5 157.54 moveto
+120.5 172.46 lineto
+102.93 183 lineto
+78.07 183 lineto
+60.5 172.46 lineto
+60.5 157.54 lineto
+78.07 147 lineto
+102.93 147 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 120.5 157.54 moveto
+120.5 172.46 lineto
+102.93 183 lineto
+78.07 183 lineto
+60.5 172.46 lineto
+60.5 157.54 lineto
+78.07 147 lineto
+102.93 147 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+77 161.3 moveto 27 (label) alignedtext
+grestore
+% label (MemoryData)->label
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 69.76 234.2 moveto
+73.36 222.38 78.19 206.48 82.29 193 curveto
+stroke
+0 0 0 edgecolor
+newpath 85.69 193.86 moveto
+85.25 183.28 lineto
+78.99 191.83 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 85.69 193.86 moveto
+85.25 183.28 lineto
+78.99 191.83 lineto
+closepath stroke
+grestore
+% out (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+0 0.68627 1 nodecolor
+newpath 147 234.5 moveto
+147 270.5 lineto
+482 270.5 lineto
+482 234.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 147 234.5 moveto
+147 270.5 lineto
+482 270.5 lineto
+482 234.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+155 248.8 moveto 319 (out \(Convolution\) kernel size: 1 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% out
+gsave
+0 0 0.87843 nodecolor
+newpath 284.5 157.54 moveto
+284.5 172.46 lineto
+268.68 183 lineto
+246.32 183 lineto
+230.5 172.46 lineto
+230.5 157.54 lineto
+246.32 147 lineto
+268.68 147 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 284.5 157.54 moveto
+284.5 172.46 lineto
+268.68 183 lineto
+246.32 183 lineto
+230.5 172.46 lineto
+230.5 157.54 lineto
+246.32 147 lineto
+268.68 147 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+248.5 161.3 moveto 18 (out) alignedtext
+grestore
+% out (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1->out
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 302.97 234.2 moveto
+294.8 221.95 283.71 205.32 274.53 191.55 curveto
+stroke
+0 0 0 edgecolor
+newpath 277.28 189.36 moveto
+268.82 182.98 lineto
+271.46 193.25 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 277.28 189.36 moveto
+268.82 182.98 lineto
+271.46 193.25 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+288.5 204.8 moveto 7 (9) alignedtext
+grestore
+% Dropout3
+gsave
+0 0 0.87843 nodecolor
+newpath 362.18 1522.54 moveto
+362.18 1537.46 lineto
+334.25 1548 lineto
+294.75 1548 lineto
+266.82 1537.46 lineto
+266.82 1522.54 lineto
+294.75 1512 lineto
+334.25 1512 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 362.18 1522.54 moveto
+362.18 1537.46 lineto
+334.25 1548 lineto
+294.75 1548 lineto
+266.82 1537.46 lineto
+266.82 1522.54 lineto
+294.75 1512 lineto
+334.25 1512 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+288.5 1526.3 moveto 52 (Dropout3) alignedtext
+grestore
+% ReLU3 (ReLU)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 263.5 1438.5 moveto
+263.5 1474.5 lineto
+365.5 1474.5 lineto
+365.5 1438.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 263.5 1438.5 moveto
+263.5 1474.5 lineto
+365.5 1474.5 lineto
+365.5 1438.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+271.5 1452.8 moveto 86 (ReLU3 \(ReLU\)) alignedtext
+grestore
+% Dropout3->ReLU3 (ReLU)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1511.69 moveto
+314.5 1503.61 314.5 1493.8 314.5 1484.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1484.65 moveto
+314.5 1474.65 lineto
+311 1484.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1484.65 moveto
+314.5 1474.65 lineto
+311 1484.65 lineto
+closepath stroke
+grestore
+% Convolution4
+gsave
+0 0 0.87843 nodecolor
+newpath 378.54 1067.54 moveto
+378.54 1082.46 lineto
+341.02 1093 lineto
+287.98 1093 lineto
+250.46 1082.46 lineto
+250.46 1067.54 lineto
+287.98 1057 lineto
+341.02 1057 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 378.54 1067.54 moveto
+378.54 1082.46 lineto
+341.02 1093 lineto
+287.98 1093 lineto
+250.46 1082.46 lineto
+250.46 1067.54 lineto
+287.98 1057 lineto
+341.02 1057 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+277 1071.3 moveto 75 (Convolution4) alignedtext
+grestore
+% Dropout4 (Dropout)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 251.5 983.5 moveto
+251.5 1019.5 lineto
+377.5 1019.5 lineto
+377.5 983.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 251.5 983.5 moveto
+251.5 1019.5 lineto
+377.5 1019.5 lineto
+377.5 983.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+259.5 997.8 moveto 110 (Dropout4 \(Dropout\)) alignedtext
+grestore
+% Convolution4->Dropout4 (Dropout)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1056.69 moveto
+314.5 1048.61 314.5 1038.8 314.5 1029.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1029.65 moveto
+314.5 1019.65 lineto
+311 1029.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1029.65 moveto
+314.5 1019.65 lineto
+311 1029.65 lineto
+closepath stroke
+grestore
+% ReLU1 (ReLU)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 263.5 2642.5 moveto
+263.5 2678.5 lineto
+365.5 2678.5 lineto
+365.5 2642.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 263.5 2642.5 moveto
+263.5 2678.5 lineto
+365.5 2678.5 lineto
+365.5 2642.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+271.5 2656.8 moveto 86 (ReLU1 \(ReLU\)) alignedtext
+grestore
+% ReLU1
+gsave
+0 0 0.87843 nodecolor
+newpath 353.79 2579.54 moveto
+353.79 2594.46 lineto
+330.78 2605 lineto
+298.22 2605 lineto
+275.21 2594.46 lineto
+275.21 2579.54 lineto
+298.22 2569 lineto
+330.78 2569 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 353.79 2579.54 moveto
+353.79 2594.46 lineto
+330.78 2605 lineto
+298.22 2605 lineto
+275.21 2594.46 lineto
+275.21 2579.54 lineto
+298.22 2569 lineto
+330.78 2569 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+294.5 2583.3 moveto 40 (ReLU1) alignedtext
+grestore
+% ReLU1 (ReLU)->ReLU1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2642.19 moveto
+314.5 2634.11 314.5 2624.3 314.5 2615.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2615.15 moveto
+314.5 2605.15 lineto
+311 2615.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2615.15 moveto
+314.5 2605.15 lineto
+311 2615.15 lineto
+closepath stroke
+grestore
+% Pooling2 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+0.1 1 1 nodecolor
+newpath 126 1893.5 moveto
+126 1929.5 lineto
+503 1929.5 lineto
+503 1893.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 126 1893.5 moveto
+126 1929.5 lineto
+503 1929.5 lineto
+503 1893.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+134 1907.8 moveto 361 (Pooling2 \(MAX Pooling\) kernel size: 1 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% Pooling2
+gsave
+0 0 0.87843 nodecolor
+newpath 360.46 1830.54 moveto
+360.46 1845.46 lineto
+333.54 1856 lineto
+295.46 1856 lineto
+268.54 1845.46 lineto
+268.54 1830.54 lineto
+295.46 1820 lineto
+333.54 1820 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 360.46 1830.54 moveto
+360.46 1845.46 lineto
+333.54 1856 lineto
+295.46 1856 lineto
+268.54 1845.46 lineto
+268.54 1830.54 lineto
+295.46 1820 lineto
+333.54 1820 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+290 1834.3 moveto 49 (Pooling2) alignedtext
+grestore
+% Pooling2 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1->Pooling2
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1893.19 moveto
+314.5 1885.11 314.5 1875.3 314.5 1866.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1866.15 moveto
+314.5 1856.15 lineto
+311 1866.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1866.15 moveto
+314.5 1856.15 lineto
+311 1866.15 lineto
+closepath stroke
+grestore
+% Convolution5
+gsave
+0 0 0.87843 nodecolor
+newpath 378.54 612.54 moveto
+378.54 627.46 lineto
+341.02 638 lineto
+287.98 638 lineto
+250.46 627.46 lineto
+250.46 612.54 lineto
+287.98 602 lineto
+341.02 602 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 378.54 612.54 moveto
+378.54 627.46 lineto
+341.02 638 lineto
+287.98 638 lineto
+250.46 627.46 lineto
+250.46 612.54 lineto
+287.98 602 lineto
+341.02 602 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+277 616.3 moveto 75 (Convolution5) alignedtext
+grestore
+% Dropout5 (Dropout)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 251.5 528.5 moveto
+251.5 564.5 lineto
+377.5 564.5 lineto
+377.5 528.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 251.5 528.5 moveto
+251.5 564.5 lineto
+377.5 564.5 lineto
+377.5 528.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+259.5 542.8 moveto 110 (Dropout5 \(Dropout\)) alignedtext
+grestore
+% Convolution5->Dropout5 (Dropout)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 601.69 moveto
+314.5 593.61 314.5 583.8 314.5 574.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 574.65 moveto
+314.5 564.65 lineto
+311 574.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 574.65 moveto
+314.5 564.65 lineto
+311 574.65 lineto
+closepath stroke
+grestore
+% ReLU3
+gsave
+0 0 0.87843 nodecolor
+newpath 353.79 1375.54 moveto
+353.79 1390.46 lineto
+330.78 1401 lineto
+298.22 1401 lineto
+275.21 1390.46 lineto
+275.21 1375.54 lineto
+298.22 1365 lineto
+330.78 1365 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 353.79 1375.54 moveto
+353.79 1390.46 lineto
+330.78 1401 lineto
+298.22 1401 lineto
+275.21 1390.46 lineto
+275.21 1375.54 lineto
+298.22 1365 lineto
+330.78 1365 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+294.5 1379.3 moveto 40 (ReLU3) alignedtext
+grestore
+% Pooling3 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+0.1 1 1 nodecolor
+newpath 126 1291.5 moveto
+126 1327.5 lineto
+503 1327.5 lineto
+503 1291.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 126 1291.5 moveto
+126 1327.5 lineto
+503 1327.5 lineto
+503 1291.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+134 1305.8 moveto 361 (Pooling3 \(MAX Pooling\) kernel size: 1 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% ReLU3->Pooling3 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1364.69 moveto
+314.5 1356.61 314.5 1346.8 314.5 1337.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1337.65 moveto
+314.5 1327.65 lineto
+311 1337.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1337.65 moveto
+314.5 1327.65 lineto
+311 1337.65 lineto
+closepath stroke
+grestore
+% out->prob (Softmax)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 257.5 146.69 moveto
+257.5 138.61 257.5 128.8 257.5 119.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 261 119.65 moveto
+257.5 109.65 lineto
+254 119.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 261 119.65 moveto
+257.5 109.65 lineto
+254 119.65 lineto
+closepath stroke
+grestore
+% loss (SoftmaxWithLoss)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 35.5 73.5 moveto
+35.5 109.5 lineto
+185.5 109.5 lineto
+185.5 73.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 35.5 73.5 moveto
+35.5 109.5 lineto
+185.5 109.5 lineto
+185.5 73.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+43.5 87.8 moveto 134 (loss \(SoftmaxWithLoss\)) alignedtext
+grestore
+% out->loss (SoftmaxWithLoss)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 236.12 153.6 moveto
+214.9 143.28 181.72 127.14 154.79 114.04 curveto
+stroke
+0 0 0 edgecolor
+newpath 156.08 110.78 moveto
+145.56 109.55 lineto
+153.02 117.07 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 156.08 110.78 moveto
+145.56 109.55 lineto
+153.02 117.07 lineto
+closepath stroke
+grestore
+% Convolution3 (Convolution) kernel size: 2 stride: 1 pad: 0 dilation: 1
+gsave
+0 0.68627 1 nodecolor
+newpath 118.5 1746.5 moveto
+118.5 1782.5 lineto
+510.5 1782.5 lineto
+510.5 1746.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 118.5 1746.5 moveto
+118.5 1782.5 lineto
+510.5 1782.5 lineto
+510.5 1746.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+126.5 1760.8 moveto 376 (Convolution3 \(Convolution\) kernel size: 2 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% Pooling2->Convolution3 (Convolution) kernel size: 2 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1819.69 moveto
+314.5 1811.61 314.5 1801.8 314.5 1792.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1792.65 moveto
+314.5 1782.65 lineto
+311 1792.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1792.65 moveto
+314.5 1782.65 lineto
+311 1792.65 lineto
+closepath stroke
+grestore
+% ReLU4
+gsave
+0 0 0.87843 nodecolor
+newpath 353.79 773.54 moveto
+353.79 788.46 lineto
+330.78 799 lineto
+298.22 799 lineto
+275.21 788.46 lineto
+275.21 773.54 lineto
+298.22 763 lineto
+330.78 763 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 353.79 773.54 moveto
+353.79 788.46 lineto
+330.78 799 lineto
+298.22 799 lineto
+275.21 788.46 lineto
+275.21 773.54 lineto
+298.22 763 lineto
+330.78 763 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+294.5 777.3 moveto 40 (ReLU4) alignedtext
+grestore
+% Convolution5 (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+0 0.68627 1 nodecolor
+newpath 118.5 689.5 moveto
+118.5 725.5 lineto
+510.5 725.5 lineto
+510.5 689.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 118.5 689.5 moveto
+118.5 725.5 lineto
+510.5 725.5 lineto
+510.5 689.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+126.5 703.8 moveto 376 (Convolution5 \(Convolution\) kernel size: 1 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% ReLU4->Convolution5 (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 762.69 moveto
+314.5 754.61 314.5 744.8 314.5 735.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 735.65 moveto
+314.5 725.65 lineto
+311 735.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 735.65 moveto
+314.5 725.65 lineto
+311 735.65 lineto
+closepath stroke
+grestore
+% Dropout1
+gsave
+0 0 0.87843 nodecolor
+newpath 362.18 2726.54 moveto
+362.18 2741.46 lineto
+334.25 2752 lineto
+294.75 2752 lineto
+266.82 2741.46 lineto
+266.82 2726.54 lineto
+294.75 2716 lineto
+334.25 2716 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 362.18 2726.54 moveto
+362.18 2741.46 lineto
+334.25 2752 lineto
+294.75 2752 lineto
+266.82 2741.46 lineto
+266.82 2726.54 lineto
+294.75 2716 lineto
+334.25 2716 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+288.5 2730.3 moveto 52 (Dropout1) alignedtext
+grestore
+% Dropout1->ReLU1 (ReLU)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2715.69 moveto
+314.5 2707.61 314.5 2697.8 314.5 2688.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2688.65 moveto
+314.5 2678.65 lineto
+311 2688.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2688.65 moveto
+314.5 2678.65 lineto
+311 2688.65 lineto
+closepath stroke
+grestore
+% Convolution2 (Convolution) kernel size: 2 stride: 1 pad: 0 dilation: 1
+gsave
+0 0.68627 1 nodecolor
+newpath 118.5 2348.5 moveto
+118.5 2384.5 lineto
+510.5 2384.5 lineto
+510.5 2348.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 118.5 2348.5 moveto
+118.5 2384.5 lineto
+510.5 2384.5 lineto
+510.5 2348.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+126.5 2362.8 moveto 376 (Convolution2 \(Convolution\) kernel size: 2 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% Convolution2
+gsave
+0 0 0.87843 nodecolor
+newpath 378.54 2271.54 moveto
+378.54 2286.46 lineto
+341.02 2297 lineto
+287.98 2297 lineto
+250.46 2286.46 lineto
+250.46 2271.54 lineto
+287.98 2261 lineto
+341.02 2261 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 378.54 2271.54 moveto
+378.54 2286.46 lineto
+341.02 2297 lineto
+287.98 2297 lineto
+250.46 2286.46 lineto
+250.46 2271.54 lineto
+287.98 2261 lineto
+341.02 2261 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+277 2275.3 moveto 75 (Convolution2) alignedtext
+grestore
+% Convolution2 (Convolution) kernel size: 2 stride: 1 pad: 0 dilation: 1->Convolution2
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2348.2 moveto
+314.5 2336.49 314.5 2320.79 314.5 2307.4 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2307.28 moveto
+314.5 2297.28 lineto
+311 2307.28 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2307.28 moveto
+314.5 2297.28 lineto
+311 2307.28 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+314.5 2318.8 moveto 14 (96) alignedtext
+grestore
+% Dropout5
+gsave
+0 0 0.87843 nodecolor
+newpath 362.18 465.54 moveto
+362.18 480.46 lineto
+334.25 491 lineto
+294.75 491 lineto
+266.82 480.46 lineto
+266.82 465.54 lineto
+294.75 455 lineto
+334.25 455 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 362.18 465.54 moveto
+362.18 480.46 lineto
+334.25 491 lineto
+294.75 491 lineto
+266.82 480.46 lineto
+266.82 465.54 lineto
+294.75 455 lineto
+334.25 455 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+288.5 469.3 moveto 52 (Dropout5) alignedtext
+grestore
+% Dropout5 (Dropout)->Dropout5
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 528.19 moveto
+314.5 520.11 314.5 510.3 314.5 501.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 501.15 moveto
+314.5 491.15 lineto
+311 501.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 501.15 moveto
+314.5 491.15 lineto
+311 501.15 lineto
+closepath stroke
+grestore
+% Pooling1 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+0.1 1 1 nodecolor
+newpath 126 2495.5 moveto
+126 2531.5 lineto
+503 2531.5 lineto
+503 2495.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 126 2495.5 moveto
+126 2531.5 lineto
+503 2531.5 lineto
+503 2495.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+134 2509.8 moveto 361 (Pooling1 \(MAX Pooling\) kernel size: 1 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% ReLU1->Pooling1 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2568.69 moveto
+314.5 2560.61 314.5 2550.8 314.5 2541.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2541.65 moveto
+314.5 2531.65 lineto
+311 2541.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2541.65 moveto
+314.5 2531.65 lineto
+311 2541.65 lineto
+closepath stroke
+grestore
+% ReLU3 (ReLU)->ReLU3
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1438.19 moveto
+314.5 1430.11 314.5 1420.3 314.5 1411.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1411.15 moveto
+314.5 1401.15 lineto
+311 1411.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1411.15 moveto
+314.5 1401.15 lineto
+311 1411.15 lineto
+closepath stroke
+grestore
+% Convolution3
+gsave
+0 0 0.87843 nodecolor
+newpath 378.54 1669.54 moveto
+378.54 1684.46 lineto
+341.02 1695 lineto
+287.98 1695 lineto
+250.46 1684.46 lineto
+250.46 1669.54 lineto
+287.98 1659 lineto
+341.02 1659 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 378.54 1669.54 moveto
+378.54 1684.46 lineto
+341.02 1695 lineto
+287.98 1695 lineto
+250.46 1684.46 lineto
+250.46 1669.54 lineto
+287.98 1659 lineto
+341.02 1659 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+277 1673.3 moveto 75 (Convolution3) alignedtext
+grestore
+% Convolution3 (Convolution) kernel size: 2 stride: 1 pad: 0 dilation: 1->Convolution3
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1746.2 moveto
+314.5 1734.49 314.5 1718.79 314.5 1705.4 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1705.28 moveto
+314.5 1695.28 lineto
+311 1705.28 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1705.28 moveto
+314.5 1695.28 lineto
+311 1705.28 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+314.5 1716.8 moveto 21 (144) alignedtext
+grestore
+% Convolution1
+gsave
+0 0 0.87843 nodecolor
+newpath 378.54 2873.54 moveto
+378.54 2888.46 lineto
+341.02 2899 lineto
+287.98 2899 lineto
+250.46 2888.46 lineto
+250.46 2873.54 lineto
+287.98 2863 lineto
+341.02 2863 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 378.54 2873.54 moveto
+378.54 2888.46 lineto
+341.02 2899 lineto
+287.98 2899 lineto
+250.46 2888.46 lineto
+250.46 2873.54 lineto
+287.98 2863 lineto
+341.02 2863 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+277 2877.3 moveto 75 (Convolution1) alignedtext
+grestore
+% Convolution1 (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1->Convolution1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2950.2 moveto
+314.5 2938.49 314.5 2922.79 314.5 2909.4 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2909.28 moveto
+314.5 2899.28 lineto
+311 2909.28 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2909.28 moveto
+314.5 2899.28 lineto
+311 2909.28 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+314.5 2920.8 moveto 14 (64) alignedtext
+grestore
+% Pooling1
+gsave
+0 0 0.87843 nodecolor
+newpath 360.46 2432.54 moveto
+360.46 2447.46 lineto
+333.54 2458 lineto
+295.46 2458 lineto
+268.54 2447.46 lineto
+268.54 2432.54 lineto
+295.46 2422 lineto
+333.54 2422 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 360.46 2432.54 moveto
+360.46 2447.46 lineto
+333.54 2458 lineto
+295.46 2458 lineto
+268.54 2447.46 lineto
+268.54 2432.54 lineto
+295.46 2422 lineto
+333.54 2422 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+290 2436.3 moveto 49 (Pooling1) alignedtext
+grestore
+% Pooling1->Convolution2 (Convolution) kernel size: 2 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2421.69 moveto
+314.5 2413.61 314.5 2403.8 314.5 2394.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2394.65 moveto
+314.5 2384.65 lineto
+311 2394.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2394.65 moveto
+314.5 2384.65 lineto
+311 2394.65 lineto
+closepath stroke
+grestore
+% Convolution5 (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1->Convolution5
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 689.2 moveto
+314.5 677.49 314.5 661.79 314.5 648.4 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 648.28 moveto
+314.5 638.28 lineto
+311 648.28 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 648.28 moveto
+314.5 638.28 lineto
+311 648.28 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+314.5 659.8 moveto 21 (231) alignedtext
+grestore
+% sknet (ReLU)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 269 381.5 moveto
+269 417.5 lineto
+360 417.5 lineto
+360 381.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 269 381.5 moveto
+269 417.5 lineto
+360 417.5 lineto
+360 381.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+277 395.8 moveto 75 (sknet \(ReLU\)) alignedtext
+grestore
+% Dropout5->sknet (ReLU)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 454.69 moveto
+314.5 446.61 314.5 436.8 314.5 427.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 427.65 moveto
+314.5 417.65 lineto
+311 427.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 427.65 moveto
+314.5 417.65 lineto
+311 427.65 lineto
+closepath stroke
+grestore
+% Pooling3
+gsave
+0 0 0.87843 nodecolor
+newpath 360.46 1228.54 moveto
+360.46 1243.46 lineto
+333.54 1254 lineto
+295.46 1254 lineto
+268.54 1243.46 lineto
+268.54 1228.54 lineto
+295.46 1218 lineto
+333.54 1218 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 360.46 1228.54 moveto
+360.46 1243.46 lineto
+333.54 1254 lineto
+295.46 1254 lineto
+268.54 1243.46 lineto
+268.54 1228.54 lineto
+295.46 1218 lineto
+333.54 1218 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+290 1232.3 moveto 49 (Pooling3) alignedtext
+grestore
+% Pooling3 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1->Pooling3
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1291.19 moveto
+314.5 1283.11 314.5 1273.3 314.5 1264.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1264.15 moveto
+314.5 1254.15 lineto
+311 1264.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1264.15 moveto
+314.5 1254.15 lineto
+311 1264.15 lineto
+closepath stroke
+grestore
+% data (MemoryData)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 252 3097.5 moveto
+252 3133.5 lineto
+377 3133.5 lineto
+377 3097.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 252 3097.5 moveto
+252 3133.5 lineto
+377 3133.5 lineto
+377 3097.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+260 3111.8 moveto 109 (data \(MemoryData\)) alignedtext
+grestore
+% data (MemoryData)->data
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 3097.19 moveto
+314.5 3089.11 314.5 3079.3 314.5 3070.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 3070.15 moveto
+314.5 3060.15 lineto
+311 3070.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 3070.15 moveto
+314.5 3060.15 lineto
+311 3070.15 lineto
+closepath stroke
+grestore
+% Dropout1 (Dropout)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 251.5 2789.5 moveto
+251.5 2825.5 lineto
+377.5 2825.5 lineto
+377.5 2789.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 251.5 2789.5 moveto
+251.5 2825.5 lineto
+377.5 2825.5 lineto
+377.5 2789.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+259.5 2803.8 moveto 110 (Dropout1 \(Dropout\)) alignedtext
+grestore
+% Dropout1 (Dropout)->Dropout1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2789.19 moveto
+314.5 2781.11 314.5 2771.3 314.5 2762.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2762.15 moveto
+314.5 2752.15 lineto
+311 2762.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2762.15 moveto
+314.5 2752.15 lineto
+311 2762.15 lineto
+closepath stroke
+grestore
+% Convolution1->Dropout1 (Dropout)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2862.69 moveto
+314.5 2854.61 314.5 2844.8 314.5 2835.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2835.65 moveto
+314.5 2825.65 lineto
+311 2835.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2835.65 moveto
+314.5 2825.65 lineto
+311 2835.65 lineto
+closepath stroke
+grestore
+% Dropout3 (Dropout)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 251.5 1585.5 moveto
+251.5 1621.5 lineto
+377.5 1621.5 lineto
+377.5 1585.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 251.5 1585.5 moveto
+251.5 1621.5 lineto
+377.5 1621.5 lineto
+377.5 1585.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+259.5 1599.8 moveto 110 (Dropout3 \(Dropout\)) alignedtext
+grestore
+% Dropout3 (Dropout)->Dropout3
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1585.19 moveto
+314.5 1577.11 314.5 1567.3 314.5 1558.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1558.15 moveto
+314.5 1548.15 lineto
+311 1558.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1558.15 moveto
+314.5 1548.15 lineto
+311 1558.15 lineto
+closepath stroke
+grestore
+% label->loss (SoftmaxWithLoss)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 95.34 146.69 moveto
+97.63 138.52 100.41 128.59 102.96 119.47 curveto
+stroke
+0 0 0 edgecolor
+newpath 106.38 120.22 moveto
+105.7 109.65 lineto
+99.64 118.34 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 106.38 120.22 moveto
+105.7 109.65 lineto
+99.64 118.34 lineto
+closepath stroke
+grestore
+% Convolution4 (Convolution) kernel size: 7 stride: 1 pad: 0 dilation: 1
+gsave
+0 0.68627 1 nodecolor
+newpath 118.5 1144.5 moveto
+118.5 1180.5 lineto
+510.5 1180.5 lineto
+510.5 1144.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 118.5 1144.5 moveto
+118.5 1180.5 lineto
+510.5 1180.5 lineto
+510.5 1144.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+126.5 1158.8 moveto 376 (Convolution4 \(Convolution\) kernel size: 7 stride: 1 pad: 0 dilation: 1) alignedtext
+grestore
+% Pooling3->Convolution4 (Convolution) kernel size: 7 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1217.69 moveto
+314.5 1209.61 314.5 1199.8 314.5 1190.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1190.65 moveto
+314.5 1180.65 lineto
+311 1190.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1190.65 moveto
+314.5 1180.65 lineto
+311 1190.65 lineto
+closepath stroke
+grestore
+% ReLU2
+gsave
+0 0 0.87843 nodecolor
+newpath 353.79 1977.54 moveto
+353.79 1992.46 lineto
+330.78 2003 lineto
+298.22 2003 lineto
+275.21 1992.46 lineto
+275.21 1977.54 lineto
+298.22 1967 lineto
+330.78 1967 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 353.79 1977.54 moveto
+353.79 1992.46 lineto
+330.78 2003 lineto
+298.22 2003 lineto
+275.21 1992.46 lineto
+275.21 1977.54 lineto
+298.22 1967 lineto
+330.78 1967 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+294.5 1981.3 moveto 40 (ReLU2) alignedtext
+grestore
+% ReLU2->Pooling2 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1966.69 moveto
+314.5 1958.61 314.5 1948.8 314.5 1939.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1939.65 moveto
+314.5 1929.65 lineto
+311 1939.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1939.65 moveto
+314.5 1929.65 lineto
+311 1939.65 lineto
+closepath stroke
+grestore
+% Dropout4
+gsave
+0 0 0.87843 nodecolor
+newpath 362.18 920.54 moveto
+362.18 935.46 lineto
+334.25 946 lineto
+294.75 946 lineto
+266.82 935.46 lineto
+266.82 920.54 lineto
+294.75 910 lineto
+334.25 910 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 362.18 920.54 moveto
+362.18 935.46 lineto
+334.25 946 lineto
+294.75 946 lineto
+266.82 935.46 lineto
+266.82 920.54 lineto
+294.75 910 lineto
+334.25 910 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+288.5 924.3 moveto 52 (Dropout4) alignedtext
+grestore
+% Dropout4 (Dropout)->Dropout4
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 983.19 moveto
+314.5 975.11 314.5 965.3 314.5 956.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 956.15 moveto
+314.5 946.15 lineto
+311 956.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 956.15 moveto
+314.5 946.15 lineto
+311 956.15 lineto
+closepath stroke
+grestore
+% sknet
+gsave
+0 0 0.87843 nodecolor
+newpath 346.32 318.54 moveto
+346.32 333.46 lineto
+327.68 344 lineto
+301.32 344 lineto
+282.68 333.46 lineto
+282.68 318.54 lineto
+301.32 308 lineto
+327.68 308 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 346.32 318.54 moveto
+346.32 333.46 lineto
+327.68 344 lineto
+301.32 344 lineto
+282.68 333.46 lineto
+282.68 318.54 lineto
+301.32 308 lineto
+327.68 308 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+300 322.3 moveto 29 (sknet) alignedtext
+grestore
+% sknet->out (Convolution) kernel size: 1 stride: 1 pad: 0 dilation: 1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 307.69 moveto
+314.5 299.61 314.5 289.8 314.5 280.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 280.65 moveto
+314.5 270.65 lineto
+311 280.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 280.65 moveto
+314.5 270.65 lineto
+311 280.65 lineto
+closepath stroke
+grestore
+% ReLU4 (ReLU)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 263.5 836.5 moveto
+263.5 872.5 lineto
+365.5 872.5 lineto
+365.5 836.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 263.5 836.5 moveto
+263.5 872.5 lineto
+365.5 872.5 lineto
+365.5 836.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+271.5 850.8 moveto 86 (ReLU4 \(ReLU\)) alignedtext
+grestore
+% ReLU4 (ReLU)->ReLU4
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 836.19 moveto
+314.5 828.11 314.5 818.3 314.5 809.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 809.15 moveto
+314.5 799.15 lineto
+311 809.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 809.15 moveto
+314.5 799.15 lineto
+311 809.15 lineto
+closepath stroke
+grestore
+% sknet (ReLU)->sknet
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 381.19 moveto
+314.5 373.11 314.5 363.3 314.5 354.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 354.15 moveto
+314.5 344.15 lineto
+311 354.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 354.15 moveto
+314.5 344.15 lineto
+311 354.15 lineto
+closepath stroke
+grestore
+% Pooling1 (MAX Pooling) kernel size: 1 stride: 1 pad: 0 dilation: 1->Pooling1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2495.19 moveto
+314.5 2487.11 314.5 2477.3 314.5 2468.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2468.15 moveto
+314.5 2458.15 lineto
+311 2468.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2468.15 moveto
+314.5 2458.15 lineto
+311 2468.15 lineto
+closepath stroke
+grestore
+% Convolution3->Dropout3 (Dropout)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1658.69 moveto
+314.5 1650.61 314.5 1640.8 314.5 1631.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1631.65 moveto
+314.5 1621.65 lineto
+311 1631.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1631.65 moveto
+314.5 1621.65 lineto
+311 1631.65 lineto
+closepath stroke
+grestore
+% Convolution4 (Convolution) kernel size: 7 stride: 1 pad: 0 dilation: 1->Convolution4
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 1144.2 moveto
+314.5 1132.49 314.5 1116.79 314.5 1103.4 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 1103.28 moveto
+314.5 1093.28 lineto
+311 1103.28 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 1103.28 moveto
+314.5 1093.28 lineto
+311 1103.28 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+314.5 1114.8 moveto 21 (576) alignedtext
+grestore
+% ReLU2 (ReLU)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 263.5 2040.5 moveto
+263.5 2076.5 lineto
+365.5 2076.5 lineto
+365.5 2040.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 263.5 2040.5 moveto
+263.5 2076.5 lineto
+365.5 2076.5 lineto
+365.5 2040.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+271.5 2054.8 moveto 86 (ReLU2 \(ReLU\)) alignedtext
+grestore
+% ReLU2 (ReLU)->ReLU2
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2040.19 moveto
+314.5 2032.11 314.5 2022.3 314.5 2013.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2013.15 moveto
+314.5 2003.15 lineto
+311 2013.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2013.15 moveto
+314.5 2003.15 lineto
+311 2013.15 lineto
+closepath stroke
+grestore
+% Dropout2
+gsave
+0 0 0.87843 nodecolor
+newpath 362.18 2124.54 moveto
+362.18 2139.46 lineto
+334.25 2150 lineto
+294.75 2150 lineto
+266.82 2139.46 lineto
+266.82 2124.54 lineto
+294.75 2114 lineto
+334.25 2114 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 362.18 2124.54 moveto
+362.18 2139.46 lineto
+334.25 2150 lineto
+294.75 2150 lineto
+266.82 2139.46 lineto
+266.82 2124.54 lineto
+294.75 2114 lineto
+334.25 2114 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+288.5 2128.3 moveto 52 (Dropout2) alignedtext
+grestore
+% Dropout2->ReLU2 (ReLU)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2113.69 moveto
+314.5 2105.61 314.5 2095.8 314.5 2086.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2086.65 moveto
+314.5 2076.65 lineto
+311 2086.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2086.65 moveto
+314.5 2076.65 lineto
+311 2086.65 lineto
+closepath stroke
+grestore
+% Dropout2 (Dropout)
+gsave
+0.60706 0.57806 0.92941 nodecolor
+newpath 251.5 2187.5 moveto
+251.5 2223.5 lineto
+377.5 2223.5 lineto
+377.5 2187.5 lineto
+closepath fill
+1 setlinewidth
+filled
+0 0 0 nodecolor
+newpath 251.5 2187.5 moveto
+251.5 2223.5 lineto
+377.5 2223.5 lineto
+377.5 2187.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+259.5 2201.8 moveto 110 (Dropout2 \(Dropout\)) alignedtext
+grestore
+% Dropout2 (Dropout)->Dropout2
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2187.19 moveto
+314.5 2179.11 314.5 2169.3 314.5 2160.26 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2160.15 moveto
+314.5 2150.15 lineto
+311 2160.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2160.15 moveto
+314.5 2150.15 lineto
+311 2160.15 lineto
+closepath stroke
+grestore
+% Dropout4->ReLU4 (ReLU)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 909.69 moveto
+314.5 901.61 314.5 891.8 314.5 882.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 882.65 moveto
+314.5 872.65 lineto
+311 882.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 882.65 moveto
+314.5 872.65 lineto
+311 882.65 lineto
+closepath stroke
+grestore
+% Convolution2->Dropout2 (Dropout)
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 314.5 2260.69 moveto
+314.5 2252.61 314.5 2242.8 314.5 2233.76 curveto
+stroke
+0 0 0 edgecolor
+newpath 318 2233.65 moveto
+314.5 2223.65 lineto
+311 2233.65 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 318 2233.65 moveto
+314.5 2223.65 lineto
+311 2233.65 lineto
+closepath stroke
+grestore
+endpage
+showpage
+grestore
+%%PageTrailer
+%%EndPage: 1
+%%Trailer
+%%Pages: 1
+%%BoundingBox: 0 0 95 576
+end
+restore
+%%EOF

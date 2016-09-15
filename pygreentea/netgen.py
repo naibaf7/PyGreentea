@@ -36,6 +36,7 @@ class MetaLayers(object):
 class SKNetConf:
     # SK-Net convolution steps (may change if necessary)
     conv = [[8],[6],[4]]
+    pool = [[2],[2],[2]]
     # Feature map increase rule
     fmap_inc_rule = lambda self,fmaps: int(math.ceil(float(fmaps) * 1.5))
     # Number of 1x1 (IP) Convolution steps
@@ -50,6 +51,8 @@ class SKNetConf:
     def parse(self, params):
         if ('conv' in params):
             self.conv = params['conv']
+        if ('pool' in params):
+            self.pool = params['pool']
         if ('fmap_inc_rule' in params):
             self.fmap_inc_rule = params['fmap_inc_rule']
         if ('fmap_dec_rule' in params):
@@ -217,13 +220,13 @@ def implement_sknet(bottom, netconf, sknetconf, return_blobs_only=True):
     for i in range(0, len(sknetconf.conv)):
         final_ksize = [minidx(sknetconf.conv[i], j) for j in range(0,len(sw_shape))]
         for j in range(0, len(sw_shape)):
-            if (not (sw_shape[j] - (final_ksize[j] - 1)) % 2 == 0):
+            while (not (sw_shape[j] - (final_ksize[j] - 1)) % minidx(minidx(sknetconf.pool, i), j) == 0 or sw_shape[j] - (final_ksize[j] - 1) < 0):
                 final_ksize[j] += 1
-            sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) / 2
+            sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) / minidx(minidx(sknetconf.pool, i), j)
         conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=final_ksize, dilation=dilation)
         blobs = blobs + [conv]
-        pool = max_pool(netconf, blobs[-1], kernel_size=[2], stride=[1], dilation=dilation)
-        dilation = [2 * d for d in dilation]
+        pool = max_pool(netconf, blobs[-1], kernel_size=minidx(sknetconf.pool, i), stride=[1], dilation=dilation)
+        dilation = [minidx(minidx(sknetconf.pool, i), j) * dilation[j] for j in range(0, len(dilation))]
         blobs = blobs + [pool]
         if (i < len(sknetconf.conv) - 1):
             fmaps = fmaps + [sknetconf.fmap_inc_rule(fmaps[-1])]
@@ -399,7 +402,7 @@ def fix_input_dims(net, source_layers, max_shapes=[], shape_coupled=[], phase=No
                 # Initialize the source shape
                 if (len(test_current_shapes[curr_src_idx]) == 0):
                     test_current_shapes[curr_src_idx] = [test_max_shapes[curr_src_idx][i] for i in range(0, 2 + dim_idx + 1)]
-                elif ((len(test_current_shapes[curr_src_idx]) < 2 + dim_idx + 1) and (len(test_current_shapes[src_idx]) < len(test_max_shapes[src_idx]))):
+                elif ((len(test_current_shapes[curr_src_idx]) < 2 + dim_idx + 1) and (len(test_current_shapes[curr_src_idx]) < len(test_max_shapes[curr_src_idx]))):
                     test_current_shapes[curr_src_idx] = test_current_shapes[curr_src_idx] + [test_max_shapes[curr_src_idx][2 + dim_idx]]
                  
                 # Forward the values
@@ -413,7 +416,7 @@ def fix_input_dims(net, source_layers, max_shapes=[], shape_coupled=[], phase=No
                 print test_current_shapes
                 print "Valid shape: " + str(not error)
                 
-                if (error and ((len(test_current_shapes) - 2 <= dim_idx) or (test_current_shapes[curr_src_idx][2 + dim_idx] == 1))):
+                if (error and ((len(test_current_shapes[curr_src_idx]) - 2 <= dim_idx) or (test_current_shapes[curr_src_idx][2 + dim_idx] == 1))):
                     # Reached minimum shape, reset source and go to previous source
                     if (len(test_current_shapes) - 2 > dim_idx):
                         test_current_shapes[curr_src_idx][2 + dim_idx] = test_max_shapes[curr_src_idx][2 + dim_idx]
