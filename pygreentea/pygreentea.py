@@ -207,36 +207,44 @@ def dump_tikzgraph_maps(net, folder):
             outfile.close()
 
 class TestNetEvaluator(object):
-    def __init__(self, test_net, train_net, data_arrays, options):
+    def __init__(self, test_net, train_net, data_arrays, options, callback,
+            output_blob_names=['prob'],
+            data_offsets={}, scales={}):
+        self.callback = callback
         self.options = options
         self.test_net = test_net
         self.train_net = train_net
         self.datasets = data_arrays
         self.thread = None
-        input_dims, output_dims, input_padding = get_spatial_io_dims(self.test_net)
-        fmaps_in, fmaps_out = get_fmap_io_dims(self.test_net)
-        self.shapes = [[1, fmaps_in] + input_dims]
-        self.fmaps_out = fmaps_out
-        self.n_data_dims = len(output_dims)
-        self.net_io = NetInputWrapper(self.test_net, self.shapes)
+        self.output_blob_names = output_blob_names
+        self.input_specs = get_net_input_specs( self.test_net, data_offsets, scales)
+        self.output_specs = get_net_output_specs( self.test_net, output_blob_names, data_offsets, scales)
 
     def run_test(self, iteration):
+
         caffe.select_device(self.options.test_device, False)
         for dataset_i in range(len(self.datasets)):
             dataset_to_process = self.datasets[dataset_i]
             if 'name' in dataset_to_process:
-                h5_file_name = dataset_to_process['name'] + '.h5'
+                h5_file_name = dataset_to_process['name'] + '_iter_' + str(iteration) + '.h5'
             else:
-                h5_file_name = 'test_out_' + repr(dataset_i) + '.h5'
+                h5_file_name = 'test_out_' + repr(dataset_i) + '_iter_' + str(iteration) + '.h5'
             temp_file_name = h5_file_name + '.inprogress'
+
+            # fix from Larissa H
             with h5py.File(temp_file_name, 'w') as h5_file:
-                prediction_shape = (self.fmaps_out,) + dataset_to_process['data'].shape[-self.n_data_dims:]
-                target_array = h5_file.create_dataset(name='main', shape=prediction_shape, dtype=np.float32)
-                output_arrays = process(self.test_net,
-                                        data_arrays=[dataset_to_process],
-                                        shapes=self.shapes,
-                                        net_io=self.net_io,
-                                        target_arrays=[target_array])
+                output_array = []
+                process(self.test_net, [dataset_to_process],
+                        self.output_blob_names,
+                        output_array, self.callback)
+
+                for blob_name in self.output_blob_names:
+                    prediction_shape = self.output_specs[blob_name].shape
+                    print('prediction_shape of blob', blob_name, prediction_shape)
+                    out = output_array[0][blob_name]
+                    print(out.shape)
+                    h5_file.create_dataset(name=blob_name, shape=out.shape, dtype=np.float32, data=out)
+
             os.rename(temp_file_name, h5_file_name)
             print("Just saved {}".format(h5_file_name))
 
@@ -253,7 +261,6 @@ class TestNetEvaluator(object):
         else:
             self.thread = threading.Thread(target=self.run_test, args=[iteration])
             self.thread.start()
-
 
 def init_solver(solver_config, options):
     caffe.set_mode_gpu()
@@ -286,23 +293,27 @@ def init_testnet(test_net, trained_model=None, test_device=0, level=0, stages=No
             return caffe.Net(test_net, trained_model, caffe.TEST, level=level, stages=stages)
         
 class InputSpec(object):
-    def __init__(self, name, memory_layer, blob, shape, data_offset=[], scale=[1]):
+    def __init__(self, name, memory_layer, blob, shape, data_offset=[], scale=[1], phase=0):
         self.name = name
         self.memory_layer = memory_layer
         self.blob = blob
         self.shape = shape
         self.spatial_offsets = data_offset
         self.scale = scale
+        self.phase = phase # only added to the network  
+
     def compute_spatial_offsets(self, max_shape, reset=False):
         if (reset):
             self.spatial_offsets = [] 
         self.spatial_offsets = []
         for i in range(2 + len(self.spatial_offsets), len(self.shape)):
             self.spatial_offsets.append((minidx(self.scale, i - 2) * max_shape[i] - self.shape[i]))
+
     def slice_data(self, batch_size, dataset_indexes, offsets, dataset_combined_sizes, data_arrays):
         data_slice = np.asarray([slice_data(data_arrays[dataset_indexes[i]][self.name], [((minidx(self.scale, j) * offsets[i][j] + self.spatial_offsets[j]/2) if (data_arrays[dataset_indexes[i]][self.name].shape[j] == minidx(self.scale, j) * dataset_combined_sizes[i][j]) else (minidx(self.scale, j) * offsets[i][j])) for j in range(0, min(len(offsets[i]),len(self.spatial_offsets)))], self.shape[2:]) for i in range(0, batch_size)])
         # print(data_slice.shape)
         return data_slice
+
     def scaled_shape(self):
         return [self.shape[0], self.shape[1]] + [self.shape[i + 2] / minidx(self.scale, i) for i in range(0, len(self.shape) - 2)]
     
@@ -318,11 +329,31 @@ class OutputSpec(object):
             self.spatial_offsets = []
         for i in range(2 + len(self.spatial_offsets), len(self.shape)):
             self.spatial_offsets.append((minidx(self.scale, i - 2) * max_shape[i] - self.shape[i]))
+
     def set_slice_data(self, dataset_index, offsets, data_arrays, data_slice):
         set_slice_data(data_arrays[dataset_index][self.name], data_slice, [minidx(self.scale, j) * offsets[j] for j in range(0, len(offsets))], self.shape[2:])
+
     def scaled_shape(self):
         return [self.shape[0], self.shape[1]] + [self.shape[i + 2] / minidx(self.scale, i) for i in range(0, len(self.shape) - 2)]
         
+def get_spatial_io_dims(net, out_primary=None):
+
+    if not out_primary:
+        out_primary = 'label'
+
+    if ('prob' in net.blobs):
+        out_primary = 'prob'
+
+    shapes = get_net_input_specs(net, test_blobs=['data', out_primary])
+    dims = len(shapes[0][1]) - 2
+
+    input_dims = list(shapes[0][1])[2:2+dims]
+    output_dims = list(shapes[1][1])[2:2+dims]
+    #print( 'input_dims ', input_dims )
+    #print( 'output_dims ', output_dims )
+    padding = [input_dims[i]-output_dims[i] for i in range(0,dims)]
+    return input_dims, output_dims, padding
+
 def get_net_input_specs(net, data_offsets={}, scales={}):
     input_specs = {}
     for layer in net.layers:
@@ -418,17 +449,63 @@ class OffsetGenerator:
                         
         return dataset_indexes, offsets, dataset_combined_sizes
 
+class DataGenerator:
+    """ A class that generates memory data.  Used to weight
+    training samples differently, for example.
+
+    """
+    def __init__(self, weight_blobs=['scale'], do_scale=False, **kwargs ):
+        self.name = 'DataGenerator'
+        self.do_scale = do_scale
+        self.weight_blobs = weight_blobs
+
+        if 'clip_lo' in kwargs:
+            self.clip_lo = kwargs['clip_lo']
+        else:
+            self.clip_lo = 0.05
+
+        if 'clip_hi' in kwargs:
+            self.clip_hi = kwargs['clip_hi']
+        else:
+            self.clip_hi = 0.95
+
+        if 'mask_thresh' in kwargs:
+            self.mask_thresh = kwargs['mask_thresh']
+        else:
+            self.mask_thresh = None
+
+
+    def generate( batch_data, **kwargs ):
+        """ This default implementation, looks for 
+        a 'mask' element
+        """
+
+        weights = None
+        if 'mask' in slices:
+            mask = batch_data['mask']
+            if self.mask_thresh:
+                weights = (mask > mask_thresh).astype( float32 )
+            else:
+                weights = mask
+
+        return weights
+
 
 def train(solver, options, train_data_arrays, data_slice_callback,
           test_net, test_data_arrays, test_data_slice_callback,
-          data_offsets={}, scales={}, test_data_offsets={}, test_scales={}):
+          data_offsets={}, scales={}, test_data_offsets={}, test_scales={},
+          eval=None, data_generator=None):
+
     caffe.select_device(options.train_device, False)
 
     net = solver.net
 
     test_eval = None
-    if (options.test_net != None):
-        test_eval = TestNetEvaluator(options, test_net, net, test_data_arrays, test_data_slice_callback)
+    if eval:
+        test_eval = eval
+    elif (options.test_net != None):
+        test_eval = TestNetEvaluator( test_net, net, test_data_arrays, options, test_data_slice_callback,
+                output_blob_names=output_blob_names)
     
     # Get the networks input specifications
     input_specs = get_net_input_specs(net, data_offsets=data_offsets, scales=scales)
@@ -456,13 +533,13 @@ def train(solver, options, train_data_arrays, data_slice_callback,
     # Loop from current iteration to last iteration
     for i in range(solver.iter, solver.max_iter):
         start = time.time()
-        if (options.test_net != None and i % options.test_interval == 1):
+        if (options.test_net != None and i % options.test_interval == 1
+                and i > 10 ):
             test_eval.evaluate(i)
             if config.use_one_thread:
                 # after testing finishes, switch back to the training device
                 caffe.select_device(options.train_device, False)
                 
-        
         dataset_indexes, offsets, dataset_combined_sizes = offset_generator.make_dataset_offsets(batch_size, train_data_arrays, max_shape=max_shape)
         
         slices = {}
@@ -473,11 +550,15 @@ def train(solver, options, train_data_arrays, data_slice_callback,
                 data_slice = input_specs[set_key].slice_data(batch_size, dataset_indexes, offsets, dataset_combined_sizes, train_data_arrays)
                 slices[set_key] = data_slice
 
+        if data_generator:
+            new_data = data_generator.generate( slices )
+            for set_key in data_generator.weight_blobs:
+                slices[ set_key ] = new_data[ set_key ]
+
         data_slice_callback(input_specs, batch_size, dataset_indexes, offsets, dataset_combined_sizes, train_data_arrays, slices)
         
-
         net_io.set_inputs(slices)
-        
+
         loss = solver.step(1)  # Single step
         while gc.collect():
             pass
@@ -599,7 +680,6 @@ def process(test_nets, input_arrays, output_blob_names, output_arrays, data_slic
             thread_pool.submit(process_core_multithreaded, device_locks, net_io, data_slices, dataset_indexes, offsets, output_arrays)
         else:
             process_core(net_io, data_slices, dataset_indexes, offsets, output_arrays)
-
 
 
     if not (thread_pool is None):
