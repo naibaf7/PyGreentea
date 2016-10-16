@@ -158,7 +158,7 @@ def deconv_relu(netconf, bottom, num_output, kernel_size=[3], stride=[1], pad=[0
 # 3. Dropout
 # 4. Batchnorm
 # 5. ReLU
-def conv_relu(netconf, bottom, num_output, in_place=False, kernel_size=[3], stride=[1], pad=[0], dilation=[1], group=1):           
+def conv_relu(netconf, bottom, num_output, in_place=True, kernel_size=[3], stride=[1], pad=[0], dilation=[1], group=1):           
     conv = L.Convolution(bottom, kernel_size=kernel_size, stride=stride, dilation=dilation,
                                 num_output=num_output, pad=pad, group=group,
                                 param=[dict(lr_mult=1),dict(lr_mult=2)],
@@ -225,9 +225,11 @@ def implement_sknet(bottom, netconf, sknetconf, return_blobs_only=True):
             sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) / minidx(minidx(sknetconf.pool, i), j)
         conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=final_ksize, dilation=dilation)
         blobs = blobs + [conv]
-        pool = max_pool(netconf, blobs[-1], kernel_size=minidx(sknetconf.pool, i), stride=[1], dilation=dilation)
-        dilation = [minidx(minidx(sknetconf.pool, i), j) * dilation[j] for j in range(0, len(dilation))]
-        blobs = blobs + [pool]
+        pool_kernel_size = minidx(sknetconf.pool, i)
+        if (any([x > 1 for x in pool_kernel_size])):
+            pool = max_pool(netconf, blobs[-1], kernel_size=pool_kernel_size, stride=[1], dilation=dilation)
+            dilation = [minidx(minidx(sknetconf.pool, i), j) * dilation[j] for j in range(0, len(dilation))]
+            blobs = blobs + [pool]
         if (i < len(sknetconf.conv) - 1):
             fmaps = fmaps + [sknetconf.fmap_inc_rule(fmaps[-1])]
 

@@ -336,24 +336,6 @@ class OutputSpec(object):
     def scaled_shape(self):
         return [self.shape[0], self.shape[1]] + [self.shape[i + 2] / minidx(self.scale, i) for i in range(0, len(self.shape) - 2)]
         
-def get_spatial_io_dims(net, out_primary=None):
-
-    if not out_primary:
-        out_primary = 'label'
-
-    if ('prob' in net.blobs):
-        out_primary = 'prob'
-
-    shapes = get_net_input_specs(net, test_blobs=['data', out_primary])
-    dims = len(shapes[0][1]) - 2
-
-    input_dims = list(shapes[0][1])[2:2+dims]
-    output_dims = list(shapes[1][1])[2:2+dims]
-    #print( 'input_dims ', input_dims )
-    #print( 'output_dims ', output_dims )
-    padding = [input_dims[i]-output_dims[i] for i in range(0,dims)]
-    return input_dims, output_dims, padding
-
 def get_net_input_specs(net, data_offsets={}, scales={}):
     input_specs = {}
     for layer in net.layers:
@@ -449,52 +431,10 @@ class OffsetGenerator:
                         
         return dataset_indexes, offsets, dataset_combined_sizes
 
-class DataGenerator:
-    """ A class that generates memory data.  Used to weight
-    training samples differently, for example.
-
-    """
-    def __init__(self, weight_blobs=['scale'], do_scale=False, **kwargs ):
-        self.name = 'DataGenerator'
-        self.do_scale = do_scale
-        self.weight_blobs = weight_blobs
-
-        if 'clip_lo' in kwargs:
-            self.clip_lo = kwargs['clip_lo']
-        else:
-            self.clip_lo = 0.05
-
-        if 'clip_hi' in kwargs:
-            self.clip_hi = kwargs['clip_hi']
-        else:
-            self.clip_hi = 0.95
-
-        if 'mask_thresh' in kwargs:
-            self.mask_thresh = kwargs['mask_thresh']
-        else:
-            self.mask_thresh = None
-
-
-    def generate( batch_data, **kwargs ):
-        """ This default implementation, looks for 
-        a 'mask' element
-        """
-
-        weights = None
-        if 'mask' in slices:
-            mask = batch_data['mask']
-            if self.mask_thresh:
-                weights = (mask > mask_thresh).astype( float32 )
-            else:
-                weights = mask
-
-        return weights
-
-
 def train(solver, options, train_data_arrays, data_slice_callback,
           test_net, test_data_arrays, test_data_slice_callback,
           data_offsets={}, scales={}, test_data_offsets={}, test_scales={},
-          eval=None, data_generator=None):
+          test_output_blob_names={}, eval=None):
 
     caffe.select_device(options.train_device, False)
 
@@ -505,7 +445,7 @@ def train(solver, options, train_data_arrays, data_slice_callback,
         test_eval = eval
     elif (options.test_net != None):
         test_eval = TestNetEvaluator( test_net, net, test_data_arrays, options, test_data_slice_callback,
-                output_blob_names=output_blob_names)
+                output_blob_names=test_output_blob_names)
     
     # Get the networks input specifications
     input_specs = get_net_input_specs(net, data_offsets=data_offsets, scales=scales)
@@ -549,11 +489,6 @@ def train(solver, options, train_data_arrays, data_slice_callback,
             for set_key in dataset_for_keys.keys():
                 data_slice = input_specs[set_key].slice_data(batch_size, dataset_indexes, offsets, dataset_combined_sizes, train_data_arrays)
                 slices[set_key] = data_slice
-
-        if data_generator:
-            new_data = data_generator.generate( slices )
-            for set_key in data_generator.weight_blobs:
-                slices[ set_key ] = new_data[ set_key ]
 
         data_slice_callback(input_specs, batch_size, dataset_indexes, offsets, dataset_combined_sizes, train_data_arrays, slices)
         
