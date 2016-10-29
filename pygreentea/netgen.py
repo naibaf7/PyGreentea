@@ -750,7 +750,18 @@ class Node:
             if (len(shape) > 0):
                 for out_edge in self.out_edges:
                     out_edge.set_shape(index, shape)
-                
+                    
+        elif (self.fn.type_name == 'InnerProduct'):
+            num_output = self.fn.params['inner_product_param']['num_output'] if ('inner_product_param' in self.fn.params and 'num_output' in self.fn.params['inner_product_param']) else 1
+
+            for in_edge in self.in_edges:
+                shape = copy.deepcopy(in_edge.get_shape(index))
+                shape[1] = num_output
+                for i in range(2,len(shape)):
+                    shape[i] = 1
+                    
+                for out_edge in self.out_edges:
+                    out_edge.set_shape(index, shape)
         # Shape stays the same
         else:
             for in_edge in self.in_edges:

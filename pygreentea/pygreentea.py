@@ -374,6 +374,10 @@ class OffsetGenerator:
         self.net_input_specs = net_input_specs
         self.net_output_specs = net_output_specs
     def make_dataset_offsets(self, batch_size, data_arrays, output_arrays=[], max_shape=[], min_shape=[]):
+        while (len(min_shape) < len(max_shape)):
+            min_shape = min_shape + [1]
+        while (len(max_shape) < len(min_shape)):
+            max_shape = max_shape + [1]
         dataset_indexes = []
         offsets = []
         dataset_combined_sizes = []
@@ -428,7 +432,6 @@ class OffsetGenerator:
                             break
                     if not increased:
                         self.dataset_index = self.dataset_index + 1
-                        
         return dataset_indexes, offsets, dataset_combined_sizes
 
 def train(solver, options, train_data_arrays, data_slice_callback,
@@ -481,7 +484,6 @@ def train(solver, options, train_data_arrays, data_slice_callback,
                 caffe.select_device(options.train_device, False)
                 
         dataset_indexes, offsets, dataset_combined_sizes = offset_generator.make_dataset_offsets(batch_size, train_data_arrays, max_shape=max_shape)
-        
         slices = {}
         
         if (len(train_data_arrays) > 0):
@@ -536,7 +538,7 @@ def process_core(net_io, data_slices, dataset_indexes, offsets, output_arrays):
         for set_key in outputs.keys():
             net_io.output_specs[set_key].set_slice_data(index, offsets[i], output_arrays, outputs[set_key][i])
     
-def process(test_nets, input_arrays, output_blob_names, output_arrays, data_slice_callback, data_offsets={}, scales={}):
+def process(test_nets, input_arrays, output_blob_names, output_arrays, data_slice_callback, data_offsets={}, scales={}, min_shape_override=[], max_shape_override=[]):
     thread_pool = None
     device_locks = None
     nets = []
@@ -580,6 +582,11 @@ def process(test_nets, input_arrays, output_blob_names, output_arrays, data_slic
                     min_shape.append(shape[j])
                 else:
                     min_shape[j] = min(min_shape[j], shape[j]) 
+                    
+        if len(min_shape_override) > 0:
+            min_shape = min_shape_override
+        if len(min_shape_override) > 0:
+            min_shape = min_shape_override
                     
         batch_size = max_shape[0]
         net_io = NetInputWrapper(net, input_specs=input_specs, output_specs=output_specs)
