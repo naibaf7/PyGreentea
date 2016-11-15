@@ -473,9 +473,27 @@ layer {
   }
 }
 layer {
+  name: "out2d"
+  type: "Convolution"
+  bottom: "Convolution10"
+  top: "out2d"
+  convolution_param {
+    num_output: 2
+    kernel_size: 1
+    kernel_size: 1
+    kernel_size: 1
+    weight_filler {
+      type: "msra"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
   name: "mergecrop"
   type: "MergeCrop"
-  bottom: "Convolution10"
+  bottom: "out2d"
   bottom: "data"
   top: "mergecrop"
 }
@@ -909,10 +927,10 @@ layer {
   }
 }
 layer {
-  name: "out"
+  name: "out3d"
   type: "Convolution"
   bottom: "Convolution20"
-  top: "out"
+  top: "out3d"
   convolution_param {
     num_output: 2
     kernel_size: 1
@@ -929,7 +947,7 @@ layer {
 layer {
   name: "prob"
   type: "Softmax"
-  bottom: "out"
+  bottom: "out3d"
   top: "prob"
   include {
     phase: TEST
@@ -938,7 +956,7 @@ layer {
 layer {
   name: "loss"
   type: "SoftmaxWithLoss"
-  bottom: "out"
+  bottom: "out3d"
   bottom: "label"
   loss_weight: 1.0
   include {

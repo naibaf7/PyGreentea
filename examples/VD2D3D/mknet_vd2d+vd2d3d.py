@@ -33,7 +33,8 @@ net.sknet2d = ML.SKNet(net.data,
                      ip_depth = 1,
                      dropout = 0.0)
 
-net.mergecrop = L.MergeCrop(net.sknet2d, net.data)
+net.out2d = L.Convolution(net.sknet2d, kernel_size=[1,1,1], num_output=2, weight_filler=dict(type='msra'), bias_filler=dict(type='constant'))
+net.mergecrop = L.MergeCrop(net.out2d, net.data)
 
 fmaps_vd2d3d = [24, 24, 36, 36, 48, 48, 60, 60]
 net.sknet3d = ML.SKNet(net.mergecrop,
@@ -49,9 +50,9 @@ net.sknet3d = ML.SKNet(net.mergecrop,
                      hybrid_dimensions = [0],
                      dropout = 0.0)
 
-net.out = L.Convolution(net.sknet3d, kernel_size=[1,1,1], num_output=2, weight_filler=dict(type='msra'), bias_filler=dict(type='constant'))
-net.prob = L.Softmax(net.out, ntop=1, in_place=False, include=[dict(phase=1)])
-net.loss = L.SoftmaxWithLoss(net.out, net.label, ntop=0, loss_weight=1.0, include=[dict(phase=0)])
+net.out3d = L.Convolution(net.sknet3d, kernel_size=[1,1,1], num_output=2, weight_filler=dict(type='msra'), bias_filler=dict(type='constant'))
+net.prob = L.Softmax(net.out3d, ntop=1, in_place=False, include=[dict(phase=1)])
+net.loss = L.SoftmaxWithLoss(net.out3d, net.label, ntop=0, loss_weight=1.0, include=[dict(phase=0)])
 
 pygt.fix_input_dims(net,
                     [net.data, net.label],
