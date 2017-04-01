@@ -113,7 +113,7 @@ layer {
   name: "Dropout1"
   type: "Dropout"
   bottom: "Convolution1"
-  top: "Dropout1"
+  top: "Convolution1"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -121,8 +121,8 @@ layer {
 layer {
   name: "ReLU1"
   type: "ReLU"
-  bottom: "Dropout1"
-  top: "ReLU1"
+  bottom: "Convolution1"
+  top: "Convolution1"
   relu_param {
     negative_slope: 0.005
   }
@@ -130,7 +130,7 @@ layer {
 layer {
   name: "Convolution2"
   type: "Convolution"
-  bottom: "ReLU1"
+  bottom: "Convolution1"
   top: "Convolution2"
   param {
     lr_mult: 1
@@ -157,7 +157,7 @@ layer {
   name: "Dropout2"
   type: "Dropout"
   bottom: "Convolution2"
-  top: "Dropout2"
+  top: "Convolution2"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -165,8 +165,8 @@ layer {
 layer {
   name: "ReLU2"
   type: "ReLU"
-  bottom: "Dropout2"
-  top: "ReLU2"
+  bottom: "Convolution2"
+  top: "Convolution2"
   relu_param {
     negative_slope: 0.005
   }
@@ -174,7 +174,7 @@ layer {
 layer {
   name: "Pooling1"
   type: "Pooling"
-  bottom: "ReLU2"
+  bottom: "Convolution2"
   top: "Pooling1"
   pooling_param {
     pool: MAX
@@ -214,7 +214,7 @@ layer {
   name: "Dropout3"
   type: "Dropout"
   bottom: "Convolution3"
-  top: "Dropout3"
+  top: "Convolution3"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -222,8 +222,8 @@ layer {
 layer {
   name: "ReLU3"
   type: "ReLU"
-  bottom: "Dropout3"
-  top: "ReLU3"
+  bottom: "Convolution3"
+  top: "Convolution3"
   relu_param {
     negative_slope: 0.005
   }
@@ -231,7 +231,7 @@ layer {
 layer {
   name: "Pooling2"
   type: "Pooling"
-  bottom: "ReLU3"
+  bottom: "Convolution3"
   top: "Pooling2"
   pooling_param {
     pool: MAX
@@ -271,7 +271,7 @@ layer {
   name: "Dropout4"
   type: "Dropout"
   bottom: "Convolution4"
-  top: "Dropout4"
+  top: "Convolution4"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -279,8 +279,8 @@ layer {
 layer {
   name: "ReLU4"
   type: "ReLU"
-  bottom: "Dropout4"
-  top: "ReLU4"
+  bottom: "Convolution4"
+  top: "Convolution4"
   relu_param {
     negative_slope: 0.005
   }
@@ -288,7 +288,7 @@ layer {
 layer {
   name: "Pooling3"
   type: "Pooling"
-  bottom: "ReLU4"
+  bottom: "Convolution4"
   top: "Pooling3"
   pooling_param {
     pool: MAX
@@ -328,7 +328,7 @@ layer {
   name: "Dropout5"
   type: "Dropout"
   bottom: "Convolution5"
-  top: "Dropout5"
+  top: "Convolution5"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -336,8 +336,8 @@ layer {
 layer {
   name: "ReLU5"
   type: "ReLU"
-  bottom: "Dropout5"
-  top: "ReLU5"
+  bottom: "Convolution5"
+  top: "Convolution5"
   relu_param {
     negative_slope: 0.005
   }
@@ -345,7 +345,7 @@ layer {
 layer {
   name: "Pooling4"
   type: "Pooling"
-  bottom: "ReLU5"
+  bottom: "Convolution5"
   top: "Pooling4"
   pooling_param {
     pool: MAX
@@ -385,7 +385,7 @@ layer {
   name: "Dropout6"
   type: "Dropout"
   bottom: "Convolution6"
-  top: "Dropout6"
+  top: "Convolution6"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -393,8 +393,8 @@ layer {
 layer {
   name: "ReLU6"
   type: "ReLU"
-  bottom: "Dropout6"
-  top: "ReLU6"
+  bottom: "Convolution6"
+  top: "Convolution6"
   relu_param {
     negative_slope: 0.005
   }
@@ -402,7 +402,7 @@ layer {
 layer {
   name: "Convolution7"
   type: "Convolution"
-  bottom: "ReLU6"
+  bottom: "Convolution6"
   top: "Convolution7"
   param {
     lr_mult: 1
@@ -429,7 +429,7 @@ layer {
   name: "Dropout7"
   type: "Dropout"
   bottom: "Convolution7"
-  top: "Dropout7"
+  top: "Convolution7"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -437,8 +437,8 @@ layer {
 layer {
   name: "ReLU7"
   type: "ReLU"
-  bottom: "Dropout7"
-  top: "ReLU7"
+  bottom: "Convolution7"
+  top: "Convolution7"
   relu_param {
     negative_slope: 0.005
   }
@@ -446,30 +446,8 @@ layer {
 layer {
   name: "Deconvolution1"
   type: "Deconvolution"
-  bottom: "ReLU7"
+  bottom: "Convolution7"
   top: "Deconvolution1"
-  param {
-    lr_mult: 0
-    decay_mult: 0
-  }
-  convolution_param {
-    num_output: 256
-    bias_term: false
-    pad: 0
-    kernel_size: 2
-    group: 256
-    stride: 2
-    weight_filler {
-      type: "constant"
-      value: 1
-    }
-  }
-}
-layer {
-  name: "Convolution8"
-  type: "Convolution"
-  bottom: "Deconvolution1"
-  top: "Convolution8"
   param {
     lr_mult: 1
   }
@@ -479,9 +457,9 @@ layer {
   convolution_param {
     num_output: 86
     pad: 0
-    kernel_size: 1
+    kernel_size: 2
     group: 1
-    stride: 1
+    stride: 2
     weight_filler {
       type: "msra"
     }
@@ -493,8 +471,8 @@ layer {
 layer {
   name: "MergeCrop1"
   type: "MergeCrop"
-  bottom: "Convolution8"
-  bottom: "ReLU2"
+  bottom: "Deconvolution1"
+  bottom: "Convolution2"
   top: "MergeCrop1"
   mergecrop_param {
     operation: STACK
@@ -505,10 +483,10 @@ layer {
   }
 }
 layer {
-  name: "Convolution9"
+  name: "Convolution8"
   type: "Convolution"
   bottom: "MergeCrop1"
-  top: "Convolution9"
+  top: "Convolution8"
   param {
     lr_mult: 1
   }
@@ -533,8 +511,8 @@ layer {
 layer {
   name: "Dropout8"
   type: "Dropout"
-  bottom: "Convolution9"
-  top: "Dropout8"
+  bottom: "Convolution8"
+  top: "Convolution8"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -542,17 +520,17 @@ layer {
 layer {
   name: "ReLU8"
   type: "ReLU"
-  bottom: "Dropout8"
-  top: "ReLU8"
+  bottom: "Convolution8"
+  top: "Convolution8"
   relu_param {
     negative_slope: 0.005
   }
 }
 layer {
-  name: "Convolution10"
+  name: "Convolution9"
   type: "Convolution"
-  bottom: "ReLU8"
-  top: "Convolution10"
+  bottom: "Convolution8"
+  top: "Convolution9"
   param {
     lr_mult: 1
   }
@@ -577,8 +555,8 @@ layer {
 layer {
   name: "Dropout9"
   type: "Dropout"
-  bottom: "Convolution10"
-  top: "Dropout9"
+  bottom: "Convolution9"
+  top: "Convolution9"
   dropout_param {
     dropout_ratio: 0.2
   }
@@ -586,8 +564,8 @@ layer {
 layer {
   name: "usknet"
   type: "ReLU"
-  bottom: "Dropout9"
-  top: "usknet"
+  bottom: "Convolution9"
+  top: "Convolution9"
   relu_param {
     negative_slope: 0.005
   }
@@ -595,7 +573,7 @@ layer {
 layer {
   name: "aff_out"
   type: "Convolution"
-  bottom: "usknet"
+  bottom: "Convolution9"
   top: "aff_out"
   param {
     lr_mult: 1
@@ -618,7 +596,7 @@ layer {
 layer {
   name: "smax_out"
   type: "Convolution"
-  bottom: "usknet"
+  bottom: "Convolution9"
   top: "smax_out"
   param {
     lr_mult: 1

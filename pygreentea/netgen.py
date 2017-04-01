@@ -37,6 +37,7 @@ class SKNetConf:
     # SK-Net convolution steps (may change if necessary)
     conv = [[8],[6],[4]]
     pool = [[2],[2],[2]]
+    activation = []
     # Feature map increase rule
     fmap_inc_rule = lambda self,fmaps: int(math.ceil(float(fmaps) * 1.5))
     # Number of 1x1 (IP) Convolution steps
@@ -47,6 +48,8 @@ class SKNetConf:
     fmap_dec_rule = lambda self,fmaps: int(math.ceil(float(fmaps) / 2.5))
     # Network padding
     padding = [44]
+    # Hybrid dimensions expressing SW behavior inside SK networks
+    hybrid_dimensions = []
     
     def parse(self, params):
         if ('conv' in params):
@@ -63,6 +66,11 @@ class SKNetConf:
             self.fmap_bridge_rule = params['fmap_bridge_rule']
         if ('padding' in params):
             self.padding = params['padding']
+        if ('activation' in params):
+            self.activation = params['activation']
+        if ('hybrid_dimensions' in params):
+            self.hybrid_dimensions = params['hybrid_dimensions']
+
     
 class UNetConf:
     # Number of U-Net Pooling-Convolution downsampling/upsampling steps
@@ -75,8 +83,10 @@ class UNetConf:
     downsampling_strategy = [[2],[2],[2]]
     # U-Net convolution setup (downsampling path)
     conv_down = [[[3],[3]]]
+    act_down = []
     # U-Net convolution setup (upsampling path)
     conv_up = [[[3],[3]]]
+    act_up = []
     # SK-Net configurations
     sknetconfs = []
     # Upsampling path with deconvolutions instead of convolutions
@@ -93,8 +103,12 @@ class UNetConf:
             self.downsampling_strategy = params['downsampling_strategy']
         if ('conv_down' in params):
             self.conv_down = params['conv_down']
+        if ('act_down' in params):
+            self.conv_down = params['act_down']
         if ('conv_up' in params):
             self.conv_up = params['conv_up']
+        if ('act_up' in params):
+            self.conv_up = params['act_up']
         if ('use_deconv_uppath' in params):
             self.use_deconv_uppath = params['use_deconv_uppath']
         if ('sknetconfs' in params):
@@ -130,14 +144,22 @@ class NetConf:
             self.dropout = params['dropout']
 
 
-def deconv_relu(netconf, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], dilation=[1], group=1):
+def deconv_act(netconf, bottom, num_output, kernel_size=[3], stride=[1], pad=[0], dilation=[1], group=1, activation='relu'):
     deconv = L.Deconvolution(bottom, convolution_param=dict(kernel_size=kernel_size, stride=stride, dilation=dilation,
                                 num_output=num_output, pad=pad, group=group,
                                 weight_filler=dict(type='msra'),
                                 bias_filler=dict(type='constant')), param=[dict(lr_mult=1),dict(lr_mult=2)])
     
-    relu = L.ReLU(deconv, in_place=True, negative_slope=netconf.relu_slope)
-    last = relu
+    # Activation
+    if activation == 'relu':
+        relu = L.ReLU(deconv, in_place=True, negative_slope=netconf.relu_slope)
+        last = relu
+    if activation == 'tanh':
+        tanh = L.Tanh(deconv, in_place=True)
+        last = tanh
+    if activation == 'sigmoid':
+        sigm = L.Sigmoid(deconv, in_place=True)  
+        last = sigm  
     
     if (netconf.dropout > 0):
         drop = L.Dropout(last, in_place=True, dropout_ratio=netconf.dropout)
@@ -158,7 +180,7 @@ def deconv_relu(netconf, bottom, num_output, kernel_size=[3], stride=[1], pad=[0
 # 3. Dropout
 # 4. Batchnorm
 # 5. ReLU
-def conv_relu(netconf, bottom, num_output, in_place=True, kernel_size=[3], stride=[1], pad=[0], dilation=[1], group=1):           
+def conv_act(netconf, bottom, num_output, in_place=True, kernel_size=[3], stride=[1], pad=[0], dilation=[1], group=1, activation='relu'):           
     conv = L.Convolution(bottom, kernel_size=kernel_size, stride=stride, dilation=dilation,
                                 num_output=num_output, pad=pad, group=group,
                                 param=[dict(lr_mult=1),dict(lr_mult=2)],
@@ -182,9 +204,16 @@ def conv_relu(netconf, bottom, num_output, in_place=True, kernel_size=[3], strid
         last = {bnltrain, bnltest}
 
     # Activation
-    relu = L.ReLU(last, in_place=in_place, negative_slope=netconf.relu_slope)
-    last = relu
-    
+    if activation == 'relu':
+        relu = L.ReLU(last, in_place=in_place, negative_slope=netconf.relu_slope)
+        last = relu
+    if activation == 'tanh':
+        tanh = L.Tanh(last, in_place=in_place)
+        last = tanh
+    if activation == 'sigmoid':
+        sigm = L.Sigmoid(last, in_place=in_place)  
+        last = sigm  
+        
     return last
     
 def convolution(bottom, num_output, kernel_size=[3], stride=[1], pad=[0], dilation=[1], group=1):      
@@ -198,15 +227,9 @@ def max_pool(netconf, bottom, kernel_size=[2], stride=[2], pad=[0], dilation=[1]
     return L.Pooling(bottom, pool=P.Pooling.MAX, kernel_size=kernel_size, stride=stride, pad=pad, dilation=dilation)
     
 def upconv(netconf, bottom, num_output_dec, num_output_conv, kernel_size=[2], stride=[2]):    
-    deconv = L.Deconvolution(bottom, convolution_param=dict(num_output=num_output_dec, kernel_size=kernel_size, stride=stride, pad=[0], group=num_output_dec,
-                                                            weight_filler=dict(type='constant', value=1), bias_term=False),
-                             param=dict(lr_mult=0, decay_mult=0))
-    
-    conv = L.Convolution(deconv, num_output=num_output_conv, kernel_size=[1], stride=[1], pad=[0], group=1,
-                            param=[dict(lr_mult=1),dict(lr_mult=2)],
-                            weight_filler=dict(type='msra'),
-                            bias_filler=dict(type='constant'))
-    return conv
+    deconv = L.Deconvolution(bottom, convolution_param=dict(num_output=num_output_conv, kernel_size=kernel_size, stride=stride, pad=[0], group=1,
+                                                            weight_filler=dict(type='msra'), bias_filler=dict(type='constant')),param=[dict(lr_mult=1),dict(lr_mult=2)])
+    return deconv
     
 def mergecrop(bottom_a, bottom_b, op = 'stack'):
     return L.MergeCrop(bottom_a, bottom_b, forward=[1,1], backward=[1,1], operation=(0 if (op == 'stack') else 1))
@@ -215,33 +238,45 @@ def mergecrop(bottom_a, bottom_b, op = 'stack'):
 def implement_sknet(bottom, netconf, sknetconf, return_blobs_only=True):
     blobs = [bottom]
     fmaps = [netconf.fmap_start]
+    actidx = 0
     dilation = [1 for i in range(0,len(sknetconf.padding))]
     sw_shape = [minidx(sknetconf.padding, i) + 1 for i in range(0,len(sknetconf.padding))]
     for i in range(0, len(sknetconf.conv)):
         final_ksize = [minidx(sknetconf.conv[i], j) for j in range(0,len(sw_shape))]
         for j in range(0, len(sw_shape)):
-            while (not (sw_shape[j] - (final_ksize[j] - 1)) % minidx(minidx(sknetconf.pool, i), j) == 0 or sw_shape[j] - (final_ksize[j] - 1) < 0):
+            while ((j not in sknetconf.hybrid_dimensions) and (not (sw_shape[j] - (final_ksize[j] - 1)) % minidx(minidx(sknetconf.pool, i), j) == 0 or sw_shape[j] - (final_ksize[j] - 1) < 0)):
                 final_ksize[j] += 1
-            sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) / minidx(minidx(sknetconf.pool, i), j)
-        conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=final_ksize, dilation=dilation)
+            if j not in sknetconf.hybrid_dimensions:
+                # Account for SK-type convolution and pooling analogon in SW network
+                sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) / minidx(minidx(sknetconf.pool, i), j)
+            else:
+                # Hybrid network present where SW = SK in terms of the pooling operation (stride = 1, dilation = 1, pad = 0)
+                sw_shape[j] = (sw_shape[j] - (final_ksize[j] - 1)) - (minidx(minidx(sknetconf.pool, i), j) - 1)
+        activation = minidx(sknetconf.activation, actidx) if len(sknetconf.activation) > 0 else 'relu'
+        actidx = actidx + 1
+        conv = conv_act(netconf, blobs[-1], fmaps[-1], kernel_size=final_ksize, dilation=dilation, activation=activation)
         blobs = blobs + [conv]
         pool_kernel_size = minidx(sknetconf.pool, i)
         if (any([x > 1 for x in pool_kernel_size])):
             pool = max_pool(netconf, blobs[-1], kernel_size=pool_kernel_size, stride=[1], dilation=dilation)
-            dilation = [minidx(minidx(sknetconf.pool, i), j) * dilation[j] for j in range(0, len(dilation))]
+            dilation = [(1 if j in sknetconf.hybrid_dimensions else minidx(minidx(sknetconf.pool, i), j) * dilation[j]) for j in range(0, len(dilation))]
             blobs = blobs + [pool]
         if (i < len(sknetconf.conv) - 1):
             fmaps = fmaps + [sknetconf.fmap_inc_rule(fmaps[-1])]
 
     fmaps = fmaps + [sknetconf.fmap_bridge_rule(fmaps[-1])]
     # 1st IP layer
-    conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=sw_shape, dilation=dilation)
+    activation = minidx(sknetconf.activation, actidx) if len(sknetconf.activation) > 0 else 'relu'
+    actidx = actidx + 1
+    conv = conv_act(netconf, blobs[-1], fmaps[-1], kernel_size=[max(i,1) for i in sw_shape], dilation=dilation, activation=activation)
     blobs = blobs + [conv]
 
     # Remaining IP layers
     for i in range(0, sknetconf.ip_depth - 1):
         fmaps = fmaps + [sknetconf.fmap_dec_rule(fmaps[-1])]
-        conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=[1])
+        activation = minidx(sknetconf.activation, actidx) if len(sknetconf.activation) > 0 else 'relu'
+        actidx = actidx + 1
+        conv = conv_act(netconf, blobs[-1], fmaps[-1], kernel_size=[1], activation=activation)
         blobs = blobs + [conv]    
     if return_blobs_only:
         return blobs[-1]
@@ -260,7 +295,7 @@ def implement_usknet(bottom, netconf, unetconf, return_blobs_only=True):
         for i in range(0, unetconf.depth):
             convolution_config = minidx(unetconf.conv_down, i)
             for j in range(0,len(convolution_config)):
-                conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j])
+                conv = conv_act(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j])
                 blobs = blobs + [conv]
                 for k in range(0, len(unetconf.conv_down[0][0])):
                     pad_shape[i][k] += (minidx(convolution_config[j], k) - 1)
@@ -276,10 +311,10 @@ def implement_usknet(bottom, netconf, unetconf, return_blobs_only=True):
         for j in range(0,len(convolution_config)):
             # Here we are at the bottom, so the second half of the convolutions already belongs to the up-path
             if (unetconf.use_deconv_uppath and j >= len(convolution_config)/2):
-                conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j], pad=[convolution_config[j][k] - 1 for k in range(0,len(convolution_config[j]))])
+                conv = conv_act(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j], pad=[convolution_config[j][k] - 1 for k in range(0,len(convolution_config[j]))])
                 blobs = blobs + [conv]
             else:
-                conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j])
+                conv = conv_act(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j])
                 blobs = blobs + [conv]
                 for k in range(0, len(unetconf.conv_down[0][0])):
                     pad_shape[unetconf.depth][k] += (minidx(convolution_config[j], k) - 1)
@@ -321,7 +356,7 @@ def implement_usknet(bottom, netconf, unetconf, return_blobs_only=True):
             convolution_config = minidx(unetconf.conv_up, unetconf.depth - i - 1)
             for j in range(0,len(convolution_config)):
                 pad =  [convolution_config[j][k] - 1 for k in range(0,len(convolution_config[j]))] if (unetconf.use_deconv_uppath) else [0]                       
-                conv = conv_relu(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j], pad=pad)
+                conv = conv_act(netconf, blobs[-1], fmaps[-1], kernel_size=convolution_config[j], pad=pad)
                 blobs = blobs + [conv]
                 for k in range(0, len(unetconf.conv_up[0][0])):
                     pad_shape[unetconf.depth - i - 1][k] += (minidx(convolution_config[j], k) - 1)
