@@ -32,7 +32,7 @@ net.nhood = L.MemoryData(dim=[1, 1, 2, 3], ntop=1, include=[dict(phase=0, stage=
 # USK-Net metalayer
 net.unet = ML.UNet(net.data, fmap_start=12, depth=3, fmap_inc_rule = lambda fmaps: int(math.ceil(float(fmaps) * 5)), fmap_dec_rule = lambda fmaps: int(math.ceil(float(fmaps) / 5)), downsampling_strategy = [[1,3,3],[1,3,3],[1,3,3]], dropout = 0.0)
 
-net.aff_out = L.Convolution(net.unet, kernel_size=[1, 1], num_output=3, param=[dict(lr_mult=1),dict(lr_mult=2)], weight_filler=dict(type='msra'), bias_filler=dict(type='constant'))
+net.aff_out = L.Convolution(net.unet, kernel_size=[1], num_output=3, param=[dict(lr_mult=1),dict(lr_mult=2)], weight_filler=dict(type='msra'), bias_filler=dict(type='constant'))
 
 # Choose output activation functions
 net.aff_pred = L.Sigmoid(net.aff_out, ntop=1, in_place=False)
