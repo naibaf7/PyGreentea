@@ -226,7 +226,7 @@ def convolution(bottom, num_output, kernel_size=[3], stride=[1], pad=[0], dilati
 def max_pool(netconf, bottom, kernel_size=[2], stride=[2], pad=[0], dilation=[1]):
     return L.Pooling(bottom, pool=P.Pooling.MAX, kernel_size=kernel_size, stride=stride, pad=pad, dilation=dilation)
     
-def upconv(netconf, bottom, num_output_dec, num_output_conv, kernel_size=[2], stride=[2]):    
+def upconv(netconf, bottom, num_output_conv, kernel_size=[2], stride=[2]):    
     deconv = L.Deconvolution(bottom, convolution_param=dict(num_output=num_output_conv, kernel_size=kernel_size, stride=stride, pad=[0], group=1,
                                                             weight_filler=dict(type='msra'), bias_filler=dict(type='constant')),param=[dict(lr_mult=1),dict(lr_mult=2)])
     return deconv
@@ -331,7 +331,7 @@ def implement_usknet(bottom, netconf, unetconf, return_blobs_only=True):
     if unetconf.depth > 0:
         # U-Net upsampling; Upconvolution+MergeCrop+2*Convolution
         for i in range(0, unetconf.depth):
-            conv = upconv(netconf, blobs[-1], fmaps[-1], unetconf.fmap_dec_rule(fmaps[-1]), kernel_size=unetconf.downsampling_strategy[unetconf.depth - i - 1],
+            conv = upconv(netconf, blobs[-1], unetconf.fmap_dec_rule(fmaps[-1]), kernel_size=unetconf.downsampling_strategy[unetconf.depth - i - 1],
                                        stride=unetconf.downsampling_strategy[unetconf.depth - i - 1])
             blobs = blobs + [conv]
             fmaps = fmaps + [unetconf.fmap_dec_rule(fmaps[-1])]
