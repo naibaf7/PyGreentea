@@ -27,7 +27,7 @@ net.comp_label = L.MemoryData(dim=[1, 2], ntop=1, include=[dict(phase=0, stage='
 # Scale input layer
 net.scale = L.MemoryData(dim=[1, 3], ntop=1, include=[dict(phase=0, stage='euclid')])
 # Silence the not needed data and label integer values
-net.nhood = L.MemoryData(dim=[1, 1, 2, 3], ntop=1, include=[dict(phase=0, stage='malis')])
+net.nhood = L.MemoryData(dim=[1, 1, 3, 3], ntop=1, include=[dict(phase=0, stage='malis')])
 
 # USK-Net metalayer
 net.unet = ML.UNet(net.data, fmap_start=12, depth=3, fmap_inc_rule = lambda fmaps: int(math.ceil(float(fmaps) * 5)), fmap_dec_rule = lambda fmaps: int(math.ceil(float(fmaps) / 5)), downsampling_strategy = [[1,3,3],[1,3,3],[1,3,3]], dropout = 0.0)
