@@ -69,7 +69,7 @@ layer {
   memory_data_param {
     dim: 1
     dim: 1
-    dim: 2
+    dim: 3
     dim: 3
   }
 }
@@ -756,7 +756,6 @@ layer {
   }
   convolution_param {
     num_output: 3
-    kernel_size: 1
     kernel_size: 1
     weight_filler {
       type: "msra"

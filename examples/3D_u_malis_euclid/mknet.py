@@ -13,7 +13,8 @@ import caffe
 from caffe import layers as L
 from caffe import params as P
 from caffe import to_proto
-from pygreentea.pygreentea import metalayers as ML
+from caffe import metalayers as ML
+from caffe import fix_input_dims
 
 # Start a network
 net = caffe.NetSpec()
@@ -51,10 +52,10 @@ net.malis_loss = L.MalisLoss(net.aff_pred, net.aff_label, net.comp_label, net.nh
 # - A list of other inputs to test (note: the nhood input is static and not spatially testable, thus excluded here)
 # - A list of the maximal shapes for each input
 # - A list of spatial dependencies; here [-1, 0] means the Y axis is a free parameter, and the X axis should be identical to the Y axis.
-pygt.fix_input_dims(net,
-                    [net.data, net.aff_label, net.comp_label, net.scale],
-                    max_shapes = [[84,268,268],[100,100,100],[100,100,100],[100,100,100]],
-                    shape_coupled = [-1, -1, 1])
+fix_input_dims(net,
+               [net.data, net.aff_label, net.comp_label, net.scale],
+               max_shapes = [[84,268,268],[100,100,100],[100,100,100],[100,100,100]],
+               shape_coupled = [-1, -1, 1])
 
 
 protonet = net.to_proto()
